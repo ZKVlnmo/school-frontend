@@ -1,122 +1,108 @@
+<!-- src/pages/auth/Login.vue -->
+<template>
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+    <div class="w-full max-w-md bg-white rounded-xl shadow-md p-6 space-y-6">
+      <div class="text-center">
+        <h1 class="text-2xl font-bold text-gray-800">Вход в систему</h1>
+        <p class="text-gray-600 mt-2">Введите email и пароль</p>
+      </div>
+
+      <form @submit.prevent="handleLogin" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input
+              v-model="form.email"
+              type="email"
+              required
+              class="input input-bordered w-full"
+              placeholder="user@example.com"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
+          <input
+              v-model="form.password"
+              type="password"
+              required
+              class="input input-bordered w-full"
+              placeholder="••••••••"
+          />
+        </div>
+
+        <div v-if="error" class="text-red-600 text-sm">{{ error }}</div>
+
+        <button
+            type="submit"
+            :disabled="loading"
+            class="btn btn-primary w-full"
+        >
+          {{ loading ? 'Вход...' : 'Войти' }}
+        </button>
+      </form>
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-const email = ref('')
-const password = ref('')
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+
+const form = ref({
+  email: '',
+  password: ''
+})
+
 const error = ref('')
-
+const loading = ref(false)
 const router = useRouter()
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
-// Вспомогательная функция для расшифровки JWT (только payload)
-function parseJwt(token) {
-  try {
-    const payload = token.split('.')[1]
-    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
-    return JSON.parse(decoded)
-  } catch (e) {
-    console.error('Не удалось расшифровать JWT:', e)
-    return null
-  }
-}
-
-const handleSubmit = async () => {
+const handleLogin = async () => {
   error.value = ''
+  loading.value = true
+
   try {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        email: email.value,
-        password: password.value,
-      }),
+        email: form.value.email,
+        password: form.value.password
+      })
     })
 
     const data = await response.json()
 
     if (!response.ok) {
-      console.error('Ошибка входа:', response.status, data)
-      error.value = data.detail || 'Неверный email или пароль'
-      return
+      throw new Error(data.detail || 'Ошибка при входе')
     }
 
-    const { access_token } = data
-    const payload = parseJwt(access_token)
+    // ✅ Сохраняем токен
+    localStorage.setItem('access_token', data.access_token)
 
-    if (!payload || !payload.role) {
-      error.value = 'Неверный формат токена'
-      return
+    // ✅ Сохраняем данные пользователя — КЛЮЧЕВОЙ МОМЕНТ!
+    if (data.user) {
+      localStorage.setItem('user_id', data.user.id.toString())
+      localStorage.setItem('user_grade', data.user.grade || '') // у учителя может не быть grade
     }
 
-    // Сохраняем данные
-    localStorage.setItem('access_token', access_token)
-    localStorage.setItem('user_role', payload.role)
-    localStorage.setItem('user_email', payload.sub)
-
-    // Перенаправляем в зависимости от роли
-    // Перенаправляем в зависимости от роли
-    if (payload.role === 'teacher') {
-      router.push('/teacher/select-grade')
-    } else if (payload.role === 'student') {
-      router.push('/student/tasks') // ✅ Исправлено
+    // Перенаправление по ролям
+    if (data.user?.role === 'teacher') {
+      router.push('/teacher/tasks')
+    } else if (data.user?.role === 'student') {
+      router.push('/student/tasks')
     } else {
       router.push('/')
     }
   } catch (err) {
-    console.error('Сетевая ошибка:', err)
-    error.value = 'Нет соединения с сервером'
+    error.value = err.message || 'Не удалось войти'
+    console.error('Ошибка входа:', err)
+  } finally {
+    loading.value = false
   }
 }
 </script>
-
-<template>
-  <div class="min-h-screen flex items-center justify-center bg-base-100 p-4">
-    <div class="w-full max-w-md card bg-base-200 shadow-xl">
-      <div class="card-body">
-        <h1 class="text-2xl font-bold text-center text-base-content">Вход</h1>
-
-        <form @submit.prevent="handleSubmit" class="space-y-5">
-          <div>
-            <label class="label">
-              <span class="label-text">Email</span>
-            </label>
-            <input
-                v-model="email"
-                type="email"
-                required
-                placeholder="you@example.com"
-                class="input input-bordered w-full"
-            />
-          </div>
-
-          <div>
-            <label class="label">
-              <span class="label-text">Пароль</span>
-            </label>
-            <input
-                v-model="password"
-                type="password"
-                required
-                placeholder="••••••••"
-                class="input input-bordered w-full"
-            />
-          </div>
-
-          <p v-if="error" class="text-error text-sm text-center">{{ error }}</p>
-
-          <button type="submit" class="btn btn-primary w-full">
-            Войти
-          </button>
-        </form>
-
-        <p class="text-center text-sm mt-4">
-          Нет аккаунта?
-          <router-link to="/register" class="link link-primary">Зарегистрироваться</router-link>
-        </p>
-      </div>
-    </div>
-  </div>
-</template>

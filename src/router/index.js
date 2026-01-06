@@ -7,7 +7,10 @@ import Login from '@/pages/LoginView.vue'
 
 // Страницы учителя
 import TeacherSelectGrade from '@/pages/teacher/SelectGrade.vue'
-import TeacherClassView from '@/pages/teacher/TeacherClassView.vue'
+import TeacherTasks from '@/pages/teacher/TeacherTasks.vue'
+import TeacherAttendance from '@/pages/teacher/TeacherAttendance.vue'
+import TeacherGradesTable from '@/pages/teacher/GradesTable.vue'
+import StudentProfile from '@/pages/teacher/StudentProfile.vue' // ← профиль ученика
 
 // Страницы ученика
 import StudentTasks from '@/pages/student/StudentTasks.vue'
@@ -23,9 +26,24 @@ const routes = [
     meta: { requiresAuth: true, requiresRole: 'teacher' }
   },
   {
-    path: '/teacher/class/:grade',
-    component: TeacherClassView,
+    path: '/teacher/class/:grade/tasks',
+    component: TeacherTasks,
     meta: { requiresAuth: true, requiresRole: 'teacher' }
+  },
+  {
+    path: '/teacher/class/:grade/attendance',
+    component: TeacherAttendance,
+    meta: { requiresAuth: true, requiresRole: 'teacher' }
+  },
+  {
+    path: '/teacher/class/:grade/grades',
+    component: TeacherGradesTable,
+    meta: { requiresAuth: true, requiresRole: 'teacher' }
+  },
+  {
+    path: '/teacher/class/:grade/student/:studentId',
+    component: StudentProfile,
+    meta: { requiresAuth: true }
   },
 
   // Ученик
@@ -35,7 +53,7 @@ const routes = [
     meta: { requiresAuth: true, requiresRole: 'student' }
   },
 
-  // Редирект по умолчанию — в зависимости от роли
+  // Редирект по умолчанию
   {
     path: '/',
     redirect: (to) => {
@@ -56,19 +74,21 @@ const router = createRouter({
   routes
 })
 
-// Глобальный навигационный гард
+// Гард авторизации
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('access_token')
   const userRole = localStorage.getItem('user_role')
+  const userId = localStorage.getItem('user_id')
 
   if (to.meta.requiresAuth) {
     if (!token) {
       next('/login')
     } else if (to.meta.requiresRole) {
+      // Старая логика: строгая роль (для других страниц)
       if (userRole === to.meta.requiresRole) {
         next()
       } else {
-        // Если роль не совпадает — перенаправляем на подходящую главную
+        // Редирект по роли
         if (userRole === 'teacher') {
           next('/teacher/select-grade')
         } else if (userRole === 'student') {
@@ -77,7 +97,29 @@ router.beforeEach((to, from, next) => {
           next('/login')
         }
       }
+    } else if (
+        to.path.startsWith('/teacher/class/') &&
+        to.path.includes('/student/')
+    ) {
+      // Особая логика для StudentProfile
+      const studentIdFromRoute = to.params.studentId
+
+      if (userRole === 'teacher') {
+        // Учитель может смотреть любого ученика
+        next()
+      } else if (userRole === 'student') {
+        // Ученик может смотреть ТОЛЬКО СЕБЯ
+        if (String(userId) === String(studentIdFromRoute)) {
+          next()
+        } else {
+          // Пытается посмотреть чужой профиль → запрет
+          next('/student/tasks')
+        }
+      } else {
+        next('/login')
+      }
     } else {
+      // Остальные защищённые маршруты без requiresRole — разрешаем
       next()
     }
   } else {

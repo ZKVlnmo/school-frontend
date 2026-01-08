@@ -20,18 +20,17 @@
             <span v-else>Выберите класс, чтобы продолжить</span>
             <span v-if="selectedGrade" class="ml-1 font-bold text-blue-700">{{ selectedGrade }}</span>
           </p>
-          <!-- Кнопки: на мобильных — колонка, на desktop — строка -->
           <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <button
                 @click="handleNavigate('tasks')"
-                class="btn btn-primary w-full"
+                class="btn btn-primary w-full sm:w-auto"
                 :disabled="!selectedGrade"
             >
               Задания
             </button>
             <button
                 @click="handleNavigate('attendance')"
-                class="btn btn-outline btn-secondary w-full"
+                class="btn btn-outline btn-secondary w-full sm:w-auto"
                 :disabled="!selectedGrade"
             >
               Посещаемость

@@ -1,4 +1,3 @@
-<!-- src/pages/auth/Login.vue -->
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
     <div class="w-full max-w-md bg-white rounded-xl shadow-md p-6 space-y-6">
@@ -81,23 +80,34 @@ const handleLogin = async () => {
       throw new Error(data.detail || 'Ошибка при входе')
     }
 
-    // ✅ Сохраняем токен
+    // Сохраняем токен и данные пользователя
     localStorage.setItem('access_token', data.access_token)
-
-    // ✅ Сохраняем данные пользователя — КЛЮЧЕВОЙ МОМЕНТ!
     if (data.user) {
       localStorage.setItem('user_id', data.user.id.toString())
-      localStorage.setItem('user_grade', data.user.grade || '') // у учителя может не быть grade
+      localStorage.setItem('user_grade', data.user.grade || '')
+      localStorage.setItem('user_role', data.user.role)
+      localStorage.setItem('user_name', data.user.full_name)
+      localStorage.setItem('user_is_verified', data.user.is_verified.toString())
     }
 
-    // Перенаправление по ролям
-    if (data.user?.role === 'teacher') {
-      router.push('/teacher/tasks')
-    } else if (data.user?.role === 'student') {
-      router.push('/student/tasks')
+    const user = data.user
+
+    // 🔒 ПОДТВЕРЖДЕНИЕ ТРЕБУЕТСЯ ТОЛЬКО ДЛЯ УЧИТЕЛЕЙ
+    if (user.role === 'teacher' && user.is_verified === false) {
+      router.push('/account-not-verified')
     } else {
-      router.push('/')
+      // Все остальные (включая учеников) заходят напрямую
+      if (user.role === 'admin') {
+        router.push('/admin/teachers')
+      } else if (user.role === 'teacher') {
+        router.push('/teacher/select-grade')
+      } else if (user.role === 'student') {
+        router.push('/student/tasks')
+      } else {
+        router.push('/')
+      }
     }
+
   } catch (err) {
     error.value = err.message || 'Не удалось войти'
     console.error('Ошибка входа:', err)

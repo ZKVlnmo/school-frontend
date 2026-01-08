@@ -4,13 +4,17 @@ import { createRouter, createWebHistory } from 'vue-router'
 // Страницы общего назначения
 import Register from '@/pages/Register.vue'
 import Login from '@/pages/LoginView.vue'
+import AccountNotVerified from '@/pages/auth/AccountNotVerified.vue' // ← ДОБАВЛЕНО
+
+// Страницы администратора
+import AdminTeachers from '@/pages/admin/AdminTeachers.vue'
 
 // Страницы учителя
 import TeacherSelectGrade from '@/pages/teacher/SelectGrade.vue'
 import TeacherTasks from '@/pages/teacher/TeacherTasks.vue'
 import TeacherAttendance from '@/pages/teacher/TeacherAttendance.vue'
 import TeacherGradesTable from '@/pages/teacher/GradesTable.vue'
-import StudentProfile from '@/pages/teacher/StudentProfile.vue' // ← профиль ученика
+import StudentProfile from '@/pages/teacher/StudentProfile.vue'
 
 // Страницы ученика
 import StudentTasks from '@/pages/student/StudentTasks.vue'
@@ -18,12 +22,24 @@ import StudentTasks from '@/pages/student/StudentTasks.vue'
 const routes = [
   { path: '/register', component: Register },
   { path: '/login', component: Login },
+  { path: '/account-not-verified', component: AccountNotVerified }, // ← ДОБАВЛЕНО
+
+  // Администратор
+  {
+    path: '/admin/teachers',
+    component: AdminTeachers,
+    meta: { requiresAuth: true, requiresRole: 'admin' }
+  },
 
   // Учитель
   {
     path: '/teacher/select-grade',
     component: TeacherSelectGrade,
     meta: { requiresAuth: true, requiresRole: 'teacher' }
+  },
+  {
+    path: '/teacher/tasks',
+    redirect: '/teacher/select-grade'
   },
   {
     path: '/teacher/class/:grade/tasks',
@@ -52,13 +68,26 @@ const routes = [
     component: StudentTasks,
     meta: { requiresAuth: true, requiresRole: 'student' }
   },
+  {
+    path: '/student/grades',
+    redirect: (to) => {
+      const grade = localStorage.getItem('user_grade')
+      const id = localStorage.getItem('user_id')
+      if (grade && id) {
+        return `/teacher/class/${encodeURIComponent(grade)}/student/${id}`
+      }
+      return '/student/tasks'
+    }
+  },
 
   // Редирект по умолчанию
   {
     path: '/',
     redirect: (to) => {
       const role = localStorage.getItem('user_role')
-      if (role === 'teacher') {
+      if (role === 'admin') {
+        return '/admin/teachers'
+      } else if (role === 'teacher') {
         return '/teacher/select-grade'
       } else if (role === 'student') {
         return '/student/tasks'
@@ -78,53 +107,64 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('access_token')
   const userRole = localStorage.getItem('user_role')
-  const userId = localStorage.getItem('user_id')
+  const userIsVerified = localStorage.getItem('user_is_verified') === 'true'
 
   if (to.meta.requiresAuth) {
     if (!token) {
       next('/login')
     } else if (to.meta.requiresRole) {
-      // Старая логика: строгая роль (для других страниц)
+      // Маршрут требует конкретной роли
       if (userRole === to.meta.requiresRole) {
-        next()
-      } else {
-        // Редирект по роли
-        if (userRole === 'teacher') {
-          next('/teacher/select-grade')
-        } else if (userRole === 'student') {
-          next('/student/tasks')
+        // ✅ Подтверждение требуется ТОЛЬКО для учителей
+        if (userRole === 'teacher' && !userIsVerified) {
+          next('/account-not-verified')
         } else {
-          next('/login')
-        }
-      }
-    } else if (
-        to.path.startsWith('/teacher/class/') &&
-        to.path.includes('/student/')
-    ) {
-      // Особая логика для StudentProfile
-      const studentIdFromRoute = to.params.studentId
-
-      if (userRole === 'teacher') {
-        // Учитель может смотреть любого ученика
-        next()
-      } else if (userRole === 'student') {
-        // Ученик может смотреть ТОЛЬКО СЕБЯ
-        if (String(userId) === String(studentIdFromRoute)) {
           next()
-        } else {
-          // Пытается посмотреть чужой профиль → запрет
-          next('/student/tasks')
         }
       } else {
-        next('/login')
+        // Принудительная проверка роли через /me
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+            .then(res => {
+              if (res.ok) return res.json()
+              throw new Error('invalid token')
+            })
+            .then(user => {
+              localStorage.setItem('user_role', user.role)
+              localStorage.setItem('user_id', user.id.toString())
+              localStorage.setItem('user_grade', user.grade || '')
+              localStorage.setItem('user_is_verified', user.is_verified.toString())
+
+              // ✅ Подтверждение только для учителей
+              if (user.role === 'teacher' && !user.is_verified) {
+                next('/account-not-verified')
+              } else if (user.role === 'admin') {
+                next('/admin/teachers')
+              } else if (user.role === 'teacher') {
+                next('/teacher/select-grade')
+              } else if (user.role === 'student') {
+                next('/student/tasks')
+              } else {
+                next('/login')
+              }
+            })
+            .catch(() => {
+              localStorage.removeItem('access_token')
+              next('/login')
+            })
       }
     } else {
-      // Остальные защищённые маршруты без requiresRole — разрешаем
-      next()
+      // Маршрут требует авторизации, но НЕ требует роли (например, StudentProfile)
+      // ✅ Ученики и админы могут заходить; учителя — только если подтверждены
+      if (userRole === 'teacher' && !userIsVerified) {
+        next('/account-not-verified')
+      } else {
+        next()
+      }
     }
   } else {
     next()
   }
 })
-
 export default router

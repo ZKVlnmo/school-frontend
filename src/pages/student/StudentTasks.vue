@@ -5,14 +5,38 @@ import { useRouter } from 'vue-router'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
-// === ДАННЫЕ ТЕКУЩЕГО УЧЕНИКА ===
-const studentId = localStorage.getItem('user_id')
-const studentGrade = localStorage.getItem('user_grade')
+// === Проверяем роль при монтировании ===
+const router = useRouter()
+const getAccessToken = () => localStorage.getItem('access_token')
 
-// 🔍 Отладка: проверим, есть ли user_id и user_grade
-console.log('🔍 localStorage user_id:', studentId)
-console.log('🔍 localStorage user_grade:', studentGrade)
+// Редирект для учителей и админов
+onMounted(() => {
+  const userRole = localStorage.getItem('user_role')
+  const studentId = localStorage.getItem('user_id')
+  const studentGrade = localStorage.getItem('user_grade')
 
+  // Если это НЕ ученик — перенаправляем
+  if (userRole !== 'student') {
+    if (userRole === 'teacher' && studentId && studentGrade) {
+      // Учитель: показываем его "журнал" как профиль ученика
+      router.push(`/teacher/class/${encodeURIComponent(studentGrade)}/student/${studentId}`)
+    } else if (userRole === 'admin') {
+      router.push('/admin/teachers')
+    } else {
+      router.push('/login')
+    }
+    return
+  }
+
+  // Только ученики доходят сюда — загружаем их задания
+  loadAllTasks().catch(err => {
+    console.error('Критическая ошибка при загрузке:', err)
+    loading.value = false
+    loadingChecked.value = false
+  })
+})
+
+// === ДАННЫЕ ТОЛЬКО ДЛЯ УЧЕНИКОВ ===
 const tasks = ref([])
 const loading = ref(true)
 const submitting = ref(new Set())
@@ -29,21 +53,16 @@ const responseFiles = ref([])
 const isCheckedModalOpen = ref(false)
 const selectedCheckedTask = ref(null)
 
-const router = useRouter()
-const getAccessToken = () => localStorage.getItem('access_token')
+// ✅ Проверка, можно ли открыть модалку
+const canRespond = (status) => {
+  return ['assigned', 'rejected'].includes(status)
+}
 
 // 💡 Функция для подсчёта времени до дедлайна
 const getTimeLeft = (dueDate) => {
-  if (!dueDate) {
-    console.warn('⚠️ getTimeLeft вызван с dueDate =', dueDate)
-    return null
-  }
+  if (!dueDate) return null
   const now = new Date()
   const due = new Date(dueDate)
-  if (isNaN(due.getTime())) {
-    console.error('❌ Некорректная дата:', dueDate)
-    return null
-  }
   const diffMs = due - now
 
   if (diffMs <= 0) return { days: 0, hours: 0, minutes: 0, overdue: true }
@@ -64,7 +83,8 @@ const loadAllTasks = async () => {
   loadingChecked.value = true
 
   try {
-    const res = await fetch(`${API_BASE_URL}/students/tasks?page=1&size=100`, {
+    // ИЗМЕНЁН URL: добавлено /new
+    const res = await fetch(`${API_BASE_URL}/students/tasks/new?page=1&size=100`, {
       headers: { Authorization: `Bearer ${token}` }
     })
 
@@ -240,36 +260,159 @@ const downloadStudentFile = async (filename) => {
     alert('Ошибка загрузки файла')
   }
 }
-
-onMounted(() => {
-  loadAllTasks().catch(err => {
-    console.error('Критическая ошибка при загрузке:', err)
-    loading.value = false
-    loadingChecked.value = false
-  })
-})
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 p-4">
-    <!-- Модальные окна (оставлены без изменений) -->
-    <!-- ... (остальной код модалок без изменений) ... -->
+  <!-- Для учеников: показываем контент -->
+  <!-- Для учителей/админов: редирект уже произошёл в onMounted -->
 
-    <!-- Основной контент -->
+  <div class="min-h-screen bg-gray-50 p-4">
+    <!-- Модальное окно: ответ -->
+    <div v-if="isResponseModalOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div class="p-6">
+          <div class="flex justify-between items-start mb-4">
+            <h2 class="text-2xl font-bold text-gray-800">{{ selectedTaskForResponse?.title }}</h2>
+            <button @click="isResponseModalOpen = false" class="btn btn-ghost btn-sm">×</button>
+          </div>
+          <div class="space-y-5">
+            <div>
+              <p class="text-sm text-gray-600 mb-1">
+                {{ selectedTaskForResponse?.subject }} • {{ selectedTaskForResponse?.teacher_name }}
+              </p>
+              <div class="p-3 bg-gray-100 rounded border border-gray-200">
+                {{ selectedTaskForResponse?.description }}
+              </div>
+            </div>
+
+            <div v-if="selectedTaskForResponse?.files?.length" class="pt-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Файлы от учителя:</label>
+              <div class="flex flex-wrap gap-2">
+                <a
+                    v-for="(f, i) in selectedTaskForResponse.files"
+                    :key="i"
+                    :href="`${API_BASE_URL}/tasks/${selectedTaskForResponse.id}/files/${encodeURIComponent(f)}`"
+                    target="_blank"
+                    class="text-xs px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                >
+                  📎 {{ f }}
+                </a>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Ваш ответ:</label>
+              <textarea
+                  v-model="responseComment"
+                  placeholder="Напишите подробный ответ..."
+                  class="textarea textarea-bordered w-full"
+                  rows="5"
+              ></textarea>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Прикрепить файлы (необязательно):</label>
+              <input
+                  type="file"
+                  multiple
+                  @change="onModalFileChange"
+                  class="file-input file-input-bordered w-full"
+              />
+              <div v-if="responseFiles.length" class="mt-2 space-y-1">
+                <div v-for="(f, i) in responseFiles" :key="i" class="flex items-center gap-2 text-sm">
+                  {{ f.name }}
+                  <button @click="removeModalFile(i)" class="btn btn-xs btn-circle">✕</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+              <button @click="isResponseModalOpen = false" class="btn btn-ghost flex-1">Отмена</button>
+              <button
+                  @click="submitFromModal"
+                  :disabled="submitting.has(selectedTaskForResponse?.id)"
+                  class="btn btn-primary flex-1"
+              >
+                {{ submitting.has(selectedTaskForResponse?.id) ? 'Отправка...' : 'Отправить' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модальное окно: проверенные -->
+    <div v-if="isCheckedModalOpen && selectedCheckedTask" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="p-6">
+          <div class="flex justify-between items-start mb-4">
+            <h2 class="text-xl font-bold text-gray-800">{{ selectedCheckedTask.title }}</h2>
+            <button @click="isCheckedModalOpen = false" class="btn btn-ghost btn-sm">×</button>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <p class="text-sm text-gray-600">{{ selectedCheckedTask.subject }} • {{ selectedCheckedTask.teacher_name }}</p>
+              <p class="mt-2">{{ selectedCheckedTask.description }}</p>
+            </div>
+            <div v-if="selectedCheckedTask.comment">
+              <label class="block text-sm font-medium text-gray-700">Ваш ответ:</label>
+              <div class="p-3 bg-gray-100 rounded mt-1 whitespace-pre-wrap break-words">
+                {{ selectedCheckedTask.comment }}
+              </div>
+            </div>
+            <div v-if="selectedCheckedTask.student_files?.length">
+              <label class="block text-sm font-medium text-gray-700">Ваши файлы:</label>
+              <div class="flex flex-wrap gap-2 mt-1">
+                <a
+                    v-for="(f, i) in selectedCheckedTask.student_files"
+                    :key="i"
+                    @click.prevent="downloadStudentFile(f)"
+                    class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded cursor-pointer"
+                >
+                  📎 {{ f }}
+                </a>
+              </div>
+            </div>
+            <div v-if="selectedCheckedTask.files?.length">
+              <label class="block text-sm font-medium text-gray-700">Файлы от учителя:</label>
+              <div class="flex flex-wrap gap-2 mt-1">
+                <a
+                    v-for="(f, i) in selectedCheckedTask.files"
+                    :key="i"
+                    :href="`${API_BASE_URL}/tasks/${selectedCheckedTask.id}/files/${encodeURIComponent(f)}`"
+                    target="_blank"
+                    class="text-xs px-2 py-1 bg-gray-200 rounded"
+                >
+                  📎 {{ f }}
+                </a>
+              </div>
+            </div>
+            <div v-if="selectedCheckedTask.teacher_comment" class="max-h-32 overflow-y-auto">
+              <label class="block text-sm font-medium text-gray-700">Комментарий учителя:</label>
+              <div class="p-3 bg-red-50 border border-red-200 text-red-800 rounded mt-1 whitespace-pre-wrap break-words">
+                {{ selectedCheckedTask.teacher_comment }}
+              </div>
+            </div>
+            <div class="pt-2">
+              <span :class="[
+                'px-3 py-1 rounded-full text-sm font-bold',
+                selectedCheckedTask.teacher_grade === 2 ? 'bg-red-100 text-red-800' :
+                selectedCheckedTask.teacher_grade === 3 ? 'bg-orange-100 text-orange-800' :
+                selectedCheckedTask.teacher_grade === 4 ? 'bg-blue-100 text-blue-800' :
+                'bg-green-100 text-green-800'
+              ]">
+                Оценка: {{ selectedCheckedTask.teacher_grade }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Основной контент (только для учеников) -->
     <div class="max-w-4xl mx-auto">
       <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
         <h1 class="text-3xl font-bold text-gray-800">Мои задания</h1>
-        <!-- ✅ ССЫЛКА НА СТРАНИЦУ ПРОФИЛЯ УЧЕНИКА -->
-        <router-link
-            v-if="studentId && studentGrade"
-            :to="`/teacher/class/${encodeURIComponent(studentGrade)}/student/${studentId}`"
-            class="btn btn-outline btn-sm"
-        >
-          📊 Мой журнал оценок
-        </router-link>
-        <div v-else class="text-sm text-red-600">
-          ❌ user_id или user_grade отсутствуют в localStorage
-        </div>
       </div>
 
       <div v-if="loading" class="text-center py-12">
@@ -286,11 +429,9 @@ onMounted(() => {
                 :class="[
                 'rounded-xl border-l-4 p-4 transition-all duration-200',
                 getReasonColor(task.reason),
-                (task.status === 'assigned' || task.status === 'rejected')
-                ? 'hover:shadow-md cursor-pointer'
-                : 'opacity-80'
+                canRespond(task.status) ? 'hover:shadow-md cursor-pointer' : 'opacity-80'
                 ]"
-                @click="(task.status === 'assigned' || task.status === 'rejected') && openResponseModal(task)"
+                @click="canRespond(task.status) ? openResponseModal(task) : null"
             >
               <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
                 <h3 class="font-bold text-lg text-gray-800">{{ task.title }}</h3>
@@ -310,14 +451,8 @@ onMounted(() => {
                   {{ formatDate(task.due_date) }}
                 </span>
                 <span v-if="isOverdue(task.due_date)" class="ml-1 text-red-600">⚠️</span>
-                <!-- 💡 Безопасный вывод времени до дедлайна -->
                 <span v-else class="ml-2 text-gray-600">
-                  (
-                  <span v-if="task.due_date && getTimeLeft(task.due_date)">
-                    {{ getTimeLeft(task.due_date).days }}д {{ getTimeLeft(task.due_date).hours }}ч
-                  </span>
-                  <span v-else>ошибка в дате</span>
-                  )
+                  ({{ getTimeLeft(task.due_date).days }}д {{ getTimeLeft(task.due_date).hours }}ч)
                 </span>
               </div>
 
@@ -332,7 +467,6 @@ onMounted(() => {
                   {{ getStatusInfo(task.status).text }}
                 </span>
 
-                <!-- Комментарий учителя (только при rejected, укороченный) -->
                 <div v-if="task.status === 'rejected' && task.teacher_comment" class="text-xs text-error ml-2 line-clamp-1">
                   📝 {{ task.teacher_comment }}
                 </div>

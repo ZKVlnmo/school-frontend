@@ -25,7 +25,7 @@ const newTask = ref({
 })
 const selectedStudents = ref(new Set())
 const students = ref([])
-const subjects = ref(['Математика', 'Русский язык', 'Физика', 'Химия', 'История', 'Литература'])
+const subjects = ref(['География', 'Химия','Геометрия', 'Алгебра', 'Дискретная математика', 'Биология', 'Математика', 'Русский язык', 'Физика', 'Химия', 'История', 'Литература',"Информатика","Электроника","рвпо","Базы данных"])
 const newFiles = ref([])
 const taskFiles = ref([])
 const error = ref('')
@@ -50,7 +50,7 @@ const isModalOpen = ref(false)
 const isSaving = ref(false)
 const aiAnalysis = ref('')
 const isAnalyzing = ref(false)
-const autoAnalyzed = ref(false) // чтобы не дублировать авто-запрос
+const autoAnalyzed = ref(false)
 
 const getAccessToken = () => localStorage.getItem('access_token')
 
@@ -106,7 +106,7 @@ const loadStudents = async (grade) => {
   const token = getAccessToken()
   if (!token) return router.push('/login')
   try {
-    const res = await fetch(`${API_BASE_URL}/students/grade/${encodeURIComponent(grade)}`, {
+    const res = await fetch(`${API_BASE_URL}/students/${encodeURIComponent(grade)}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     students.value = res.ok ? await res.json() : []
@@ -254,7 +254,7 @@ const deleteTaskFile = async (filename) => {
     alert('Ошибка сети')
   }
 }
-// === Удаление задания ===
+
 const deleteTask = async (taskId) => {
   if (!confirm('Вы уверены, что хотите удалить задание? Все присланные работы будут удалены.')) {
     return
@@ -270,9 +270,7 @@ const deleteTask = async (taskId) => {
     })
 
     if (res.ok) {
-      // Обновляем список
       await loadTasks(route.params.grade, pagination.value.page)
-      // Сбрасываем форму, если удалили редактируемое задание
       if (newTask.value.id === taskId) {
         resetForm()
       }
@@ -284,6 +282,7 @@ const deleteTask = async (taskId) => {
     alert('Ошибка сети')
   }
 }
+
 const saveTask = async () => {
   const grade = route.params.grade
   if (!newTask.value.title?.trim()) return error.value = 'Укажите название'
@@ -363,7 +362,10 @@ const goToPage = (page) => {
 }
 
 const openSubmission = (sub) => {
-  console.log("🔥 [FRONTEND] Получено задание:", sub);
+  // Защита от отсутствующего student_id (логирование)
+  if (!sub?.student_id) {
+    console.warn('⚠️ Присланное задание без student_id:', sub)
+  }
   selectedSubmission.value = sub
   modalComment.value = ''
   modalGrade.value = 5
@@ -371,13 +373,11 @@ const openSubmission = (sub) => {
   autoAnalyzed.value = false
   isModalOpen.value = true
 
-  // ✅ Если анализ ИИ уже есть в данных — показываем его
   if (sub.ai_analysis) {
     aiAnalysis.value = sub.ai_analysis
     return
   }
 
-  // ✅ Если анализа нет, но включён ИИ — запрашиваем (как fallback)
   if (sub.task_enable_ai_analysis) {
     setTimeout(() => {
       if (!autoAnalyzed.value) {
@@ -389,6 +389,9 @@ const openSubmission = (sub) => {
 }
 
 const openAcceptedTask = (task) => {
+  if (!task?.student_id) {
+    console.warn('⚠️ Проверенное задание без student_id:', task)
+  }
   selectedSubmission.value = task
   isModalOpen.value = true
 }
@@ -510,7 +513,6 @@ const removeNewFile = (i) => {
   newFiles.value.splice(i, 1)
 }
 
-// === ИИ-анализ ===
 const analyzeWithAI = async () => {
   if (!selectedSubmission.value) return
 
@@ -568,6 +570,7 @@ onMounted(() => {
   }
 })
 </script>
+
 <template>
   <div class="min-h-screen bg-base-100 p-4">
     <!-- Модальное окно -->
@@ -583,17 +586,20 @@ onMounted(() => {
             <div class="p-4 bg-base-200 rounded-lg">
               <h3 class="font-bold text-lg">{{ selectedSubmission?.task_title }}</h3>
               <p class="text-sm opacity-80">
-                <!-- ✅ КЛИК ПО ИМЕНИ → СТРАНИЦА УЧЕНИКА -->
                 <span
-                    @click="router.push(`/teacher/class/${route.params.grade}/student/${selectedSubmission?.student_id}`)"
+                    v-if="selectedSubmission?.student_id"
+                    @click="router.push(`/teacher/class/${route.params.grade}/student/${selectedSubmission.student_id}`)"
                     class="cursor-pointer underline hover:text-primary"
                 >
                   {{ selectedSubmission?.student_name }}
                 </span>
+                <span v-else class="opacity-70">
+                  {{ selectedSubmission?.student_name || 'Неизвестный ученик' }}
+                </span>
                 • {{ selectedSubmission?.grade }}
               </p>
             </div>
-            <!-- ЗАДАНИЕ УЧИТЕЛЯ -->
+
             <div class="mt-4 p-3 bg-base-200 rounded border">
               <label class="block text-sm font-semibold mb-1">Задание:</label>
               <div class="whitespace-pre-wrap break-words">
@@ -621,7 +627,6 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- Анализ ИИ -->
             <div>
               <div class="flex justify-between items-center mb-2">
                 <label class="block text-sm font-semibold">Анализ ИИ:</label>
@@ -729,7 +734,6 @@ onMounted(() => {
                   <div class="text-xs opacity-90 mt-1">{{ formatDate(task.due_date) }}</div>
                   <div v-if="taskScope === 'all'" class="text-xs opacity-75 mt-1">{{ task.teacher_name }}</div>
 
-                  <!-- Кнопка удаления (только для своих заданий) -->
                   <button
                       v-if="taskScope === 'mine'"
                       @click.stop="deleteTask(task.id)"
@@ -794,7 +798,6 @@ onMounted(() => {
                 </label>
               </div>
 
-              <!-- Включить ИИ -->
               <div class="flex items-center gap-2">
                 <input
                     v-model="newTask.enable_ai_analysis"
@@ -853,13 +856,14 @@ onMounted(() => {
                   class="flex justify-between items-center p-3 border rounded cursor-pointer hover:bg-base-300"
               >
                 <div>
-                  <!-- ✅ КЛИК ПО ИМЕНИ → СТРАНИЦА УЧЕНИКА -->
                   <div
+                      v-if="s.id"
                       @click.stop="router.push(`/teacher/class/${route.params.grade}/student/${s.id}`)"
                       class="cursor-pointer underline hover:text-primary"
                   >
                     {{ s.full_name }}
                   </div>
+                  <div v-else class="opacity-70">{{ s.full_name }}</div>
                   <div class="text-sm opacity-75">{{ s.email }}</div>
                 </div>
                 <div class="w-5 h-5 rounded-full border flex items-center justify-center" :class="selectedStudents.has(s.id) ? 'bg-primary border-primary' : 'border-base-content'">
@@ -909,12 +913,17 @@ onMounted(() => {
                   @click="openSubmission(sub)"
               >
                 <div class="font-medium text-sm truncate">{{ sub.task_title }}</div>
-                <!-- ✅ КЛИК ПО ИМЕНИ → СТРАНИЦА УЧЕНИКА -->
-                <div
-                    @click.stop="router.push(`/teacher/class/${route.params.grade}/student/${sub.student_id}`)"
-                    class="text-xs opacity-80 mt-1 cursor-pointer underline hover:text-primary"
-                >
-                  {{ sub.student_name }}
+                <div class="text-xs opacity-80 mt-1">
+                  <span
+                      v-if="sub.student_id"
+                      @click.stop="router.push(`/teacher/class/${route.params.grade}/student/${sub.student_id}`)"
+                      class="cursor-pointer underline hover:text-primary"
+                  >
+                    {{ sub.student_name }}
+                  </span>
+                  <span v-else class="opacity-70">
+                    {{ sub.student_name || '—' }}
+                  </span>
                 </div>
                 <div class="text-xs opacity-80 mt-1">{{ sub.grade }}</div>
               </div>
@@ -922,7 +931,6 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 🔗 КНОПКА ЖУРНАЛА ОЦЕНОК -->
         <div class="text-center mb-4">
           <router-link
               :to="`/teacher/class/${route.params.grade}/grades`"
@@ -952,12 +960,17 @@ onMounted(() => {
                   @click="openAcceptedTask(task)"
               >
                 <div class="font-medium text-sm truncate">{{ task.task_title }}</div>
-                <!-- ✅ КЛИК ПО ИМЕНИ → СТРАНИЦА УЧЕНИКА -->
-                <div
-                    @click.stop="router.push(`/teacher/class/${route.params.grade}/student/${task.student_id}`)"
-                    class="text-xs opacity-80 mt-1 cursor-pointer underline hover:text-primary"
-                >
-                  {{ task.student_name }}
+                <div class="text-xs opacity-80 mt-1">
+                  <span
+                      v-if="task.student_id"
+                      @click.stop="router.push(`/teacher/class/${route.params.grade}/student/${task.student_id}`)"
+                      class="cursor-pointer underline hover:text-primary"
+                  >
+                    {{ task.student_name }}
+                  </span>
+                  <span v-else class="opacity-70">
+                    {{ task.student_name || '—' }}
+                  </span>
                 </div>
                 <div class="text-xs opacity-80 mt-1">
                   {{ task.grade }} • Оценка: {{ task.teacher_grade }}
@@ -982,6 +995,7 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
 <style scoped>
 .whitespace-pre-wrap {
   white-space: pre-wrap;

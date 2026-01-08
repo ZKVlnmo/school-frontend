@@ -92,9 +92,30 @@ const handleSubmit = async () => {
       return
     }
 
-    localStorage.setItem('access_token', data.access_token)
-    localStorage.setItem('user_role', role.value)
-    router.push('/')
+    if (role.value === 'student') {
+      // Ученик — разрешаем вход
+      localStorage.setItem('access_token', data.access_token)
+      localStorage.setItem('user_role', 'student')
+      localStorage.setItem('user_grade', selectedGrade.value)
+      localStorage.setItem('user_name', full_name.value)
+      localStorage.setItem('user_id', data.user_id?.toString() || '')
+      localStorage.setItem('user_is_verified', 'true')
+      router.push('/student/tasks')
+    } else if (role.value === 'teacher') {
+      // 🔥 УЧИТЕЛЮ НИЧЕГО НЕ СОХРАНЯЕМ — даже если бэкенд прислал токен!
+      // Очищаем на всякий случай
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('user_role')
+      localStorage.removeItem('user_grade')
+      localStorage.removeItem('user_name')
+      localStorage.removeItem('user_id')
+      localStorage.removeItem('user_is_verified')
+
+      // Перенаправляем НАПРЯМУЮ на страницу "аккаунт не подтверждён"
+      // (без входа — потому что он ещё не подтверждён!)
+      router.push('/account-not-verified')
+    }
+
   } catch (err) {
     error.value = 'Нет соединения с сервером'
   }

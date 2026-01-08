@@ -8,6 +8,15 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const route = useRoute()
 const router = useRouter()
 
+// ✅ studentId берём из URL — он всегда известен
+const studentId = route.params.studentId
+const studentGrade = ref('') // будем брать из данных
+
+if (!studentId || isNaN(Number(studentId))) {
+  alert('Некорректный ID ученика')
+  router.back()
+}
+
 const student = ref(null)
 const subjects = ref({})
 const isLoading = ref(false)
@@ -23,15 +32,17 @@ const loadStudentData = async () => {
   isLoading.value = true
   try {
     const res = await fetch(
-        `${API_BASE_URL}/tasks/students/${route.params.studentId}/grades`,
+        `${API_BASE_URL}/tasks/students/${encodeURIComponent(studentId)}/grades`,
         { headers: { Authorization: `Bearer ${token}` } }
     )
     if (res.ok) {
       const data = await res.json()
       student.value = data.student
+      studentGrade.value = data.student.grade
       subjects.value = data.subjects
     } else {
-      alert('Не удалось загрузить данные ученика')
+      const err = await res.json().catch(() => ({}))
+      alert(err.detail || 'Не удалось загрузить данные ученика')
     }
   } catch (e) {
     console.error('Ошибка:', e)
@@ -41,15 +52,16 @@ const loadStudentData = async () => {
   }
 }
 
-const openSubmissionModal = async (taskId, studentId, grade) => {
+// ✅ Используем studentId из URL, а не из student.value
+const openSubmissionModal = async (taskId, taskStudentId, grade) => {
   const token = getAccessToken()
   if (!token) return router.push('/login')
 
   try {
     const url = new URL(`${API_BASE_URL}/tasks/submission/detail`)
     url.searchParams.set('task_id', taskId)
-    url.searchParams.set('student_id', studentId)
-    url.searchParams.set('grade', grade)
+    url.searchParams.set('student_id', studentId) // ← всегда из URL
+    url.searchParams.set('grade', studentGrade.value)
 
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` }
@@ -68,7 +80,6 @@ const openSubmissionModal = async (taskId, studentId, grade) => {
   }
 }
 
-// Все задания для заголовков
 const allTasks = computed(() => {
   const tasks = []
   for (const subject in subjects.value) {
@@ -77,7 +88,6 @@ const allTasks = computed(() => {
   return tasks.sort((a, b) => new Date(b.due_date) - new Date(a.due_date))
 })
 
-// 🔴 КРАСНЫЙ КВАДРАТ, КАК В GradesTable.vue
 const getCellClass = (task) => {
   if (task.status === 'accepted') {
     switch (task.grade) {
@@ -88,10 +98,10 @@ const getCellClass = (task) => {
     }
   }
   if (task.status === 'submitted') {
-    return 'bg-gray-400 text-white' // прислано, не оценено
+    return 'bg-gray-400 text-white'
   }
   if (task.status === 'assigned') {
-    return 'bg-red-500 text-white' // ⬅️ ЗАДАНО, НЕ ПРИСЛАНО — КРАСНЫЙ
+    return 'bg-red-500 text-white'
   }
   return 'bg-transparent'
 }
@@ -194,7 +204,6 @@ onMounted(() => {
             <th class="sticky left-0 z-10 bg-gray-100 border-r border-gray-300 py-3 px-3 text-left font-semibold min-w-[180px]">
               Предмет
             </th>
-            <!-- ✅ Для каждого предмета — свои столбцы, нумерованные от 1 -->
             <th
                 v-for="(task, index) in allTasks"
                 :key="task.task_id"
@@ -209,7 +218,6 @@ onMounted(() => {
             <td class="sticky left-0 z-10 bg-white border-r border-gray-300 font-medium py-2 px-3 min-w-[180px]">
               {{ subject }}
             </td>
-            <!-- ✅ Показываем только те задания, которые относятся к этому предмету -->
             <td
                 v-for="(task, taskIndex) in taskList"
                 :key="task.task_id"
@@ -224,7 +232,6 @@ onMounted(() => {
                 {{ task.status === 'accepted' ? task.grade : '' }}
               </div>
             </td>
-            <!-- ✅ Заполняем пустые ячейки до конца строки -->
             <td
                 v-for="i in allTasks.length - taskList.length"
                 :key="'empty-' + i"

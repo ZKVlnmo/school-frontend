@@ -1,8 +1,71 @@
+<!-- src/pages/admin/AdminTeachers.vue -->
 <template>
   <div class="min-h-screen bg-gray-50 p-4">
     <div class="max-w-4xl mx-auto">
-      <h1 class="text-2xl font-bold text-gray-800 mb-6">Управление учителями</h1>
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <h1 class="text-2xl font-bold text-gray-800">Управление учителями</h1>
 
+        <!-- Кнопка для раскрытия формы генерации -->
+        <button
+            @click="showGenerateForm = !showGenerateForm"
+            class="btn btn-primary btn-sm"
+        >
+          {{ showGenerateForm ? 'Скрыть форму' : 'Создать учеников' }}
+        </button>
+      </div>
+
+      <!-- Форма генерации (встроенная) -->
+      <div v-if="showGenerateForm" class="mb-6 card bg-white rounded-lg shadow-md p-4">
+        <h2 class="font-bold text-lg mb-3">Создать учётные записи для класса</h2>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text">Название класса (например, "7-ИТ", "10А")</span>
+          </label>
+          <input
+              v-model="gradeInput"
+              type="text"
+              placeholder="7-ИТ"
+              class="input input-bordered w-full"
+              :disabled="generating"
+          />
+        </div>
+        <button
+            @click="generateStudents"
+            :disabled="!gradeInput.trim() || generating"
+            class="btn btn-primary mt-3 w-full sm:w-auto"
+        >
+          {{ generating ? 'Генерация...' : 'Создать учётные записи' }}
+        </button>
+
+        <!-- Результат -->
+        <div v-if="generatedStudents.length" class="mt-4 overflow-x-auto">
+          <h3 class="font-bold text-md mb-2">Созданные учётные записи</h3>
+          <table class="table table-zebra w-full text-sm">
+            <thead>
+            <tr>
+              <th>ФИО</th>
+              <th>Email</th>
+              <th>Пароль</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr v-for="(s, i) in generatedStudents" :key="i">
+              <td>{{ s.full_name }}</td>
+              <td class="font-mono">{{ s.email }}</td>
+              <td class="font-mono">{{ s.password }}</td>
+            </tr>
+            </tbody>
+          </table>
+          <button
+              @click="copyToClipboard"
+              class="btn btn-sm btn-outline mt-2"
+          >
+            Копировать всё
+          </button>
+        </div>
+      </div>
+
+      <!-- Список учителей -->
       <div v-if="loading" class="text-center py-8">
         <span class="loading loading-spinner"></span>
       </div>
@@ -59,6 +122,12 @@ const loading = ref(false)
 const approving = ref(new Set())
 const router = useRouter()
 
+// === Для генерации учеников ===
+const showGenerateForm = ref(false)
+const gradeInput = ref('')
+const generating = ref(false)
+const generatedStudents = ref([])
+
 const getAccessToken = () => localStorage.getItem('access_token')
 
 const loadTeachers = async () => {
@@ -102,10 +171,10 @@ const approveTeacher = async (teacherId) => {
     })
 
     if (res.ok) {
-      const updatedTeacher = await res.json() // ← Получаем обновлённого учителя
+      const updatedTeacher = await res.json()
       const teacher = teachers.value.find(t => t.id === teacherId)
       if (teacher) {
-        Object.assign(teacher, updatedTeacher) // ← Обновляем все поля
+        Object.assign(teacher, updatedTeacher)
       }
     } else {
       const err = await res.json().catch(() => ({}))
@@ -117,6 +186,63 @@ const approveTeacher = async (teacherId) => {
   } finally {
     approving.value.delete(teacherId)
   }
+}
+
+// === Генерация учеников ===
+const generateStudents = async () => {
+  const grade = gradeInput.value.trim()
+  if (!grade) {
+    alert('Укажите название класса')
+    return
+  }
+
+  generating.value = true
+  generatedStudents.value = []
+
+  try {
+    const token = getAccessToken()
+    if (!token) {
+      router.push('/login')
+      return
+    }
+
+    const res = await fetch(`${API_BASE_URL}/auth/generate-students`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ grade })
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert(err.detail || 'Не удалось создать учётные записи')
+      return
+    }
+
+    const data = await res.json()
+    generatedStudents.value = data.students || []
+  } catch (e) {
+    console.error('Ошибка генерации:', e)
+    alert('Ошибка сети или сервера')
+  } finally {
+    generating.value = false
+  }
+}
+
+const copyToClipboard = () => {
+  if (!generatedStudents.value.length) return
+
+  const text = generatedStudents.value
+      .map(s => `${s.full_name}\t${s.email}\t${s.password}`)
+      .join('\n')
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('✅ Данные скопированы!')
+  }).catch(() => {
+    alert('Не удалось скопировать. Попробуйте вручную.')
+  })
 }
 
 onMounted(() => {

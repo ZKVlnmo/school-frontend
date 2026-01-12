@@ -1,6 +1,6 @@
-<!-- src/pages/teacher/GradesTable.vue -->
+<!-- src/pages/teacher/StudentProfile.vue -->
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
@@ -8,33 +8,74 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const route = useRoute()
 const router = useRouter()
 
-const grade = route.params.grade
-const students = ref([])
-const tasks = ref([])
-const cells = ref({})
+// ✅ Универсальный fetch с обработкой 401
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('access_token')
+  const headers = {
+    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  }
+
+  const response = await fetch(url, { ...options, headers })
+
+  if (response.status === 401) {
+    localStorage.clear()
+    router.push('/login')
+    throw new Error('Unauthorized')
+  }
+
+  return response
+}
+
+// ✅ studentId берём из URL — он всегда известен
+const studentId = route.params.studentId
+const studentGrade = ref('') // будем брать из данных
+
+if (!studentId || isNaN(Number(studentId))) {
+  alert('Некорректный ID ученика')
+  router.back()
+}
+
+const student = ref(null)
+const subjects = ref({})
 const isLoading = ref(false)
-const selectedSubject = ref('')
-
-const getAccessToken = () => localStorage.getItem('access_token')
-
-// === Модальное окно ===
-const selectedSubmission = ref(null)
 const isModalOpen = ref(false)
+const selectedSubmission = ref(null)
 
-const openModal = async (taskId, studentId) => {
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
+const loadStudentData = async () => {
+  isLoading.value = true
   try {
-    // НОВЫЙ ЭНДПОИНТ
+    const res = await apiFetch(
+        `${API_BASE_URL}/tasks/students/${encodeURIComponent(studentId)}/grades`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      student.value = data.student
+      studentGrade.value = data.student.grade
+      subjects.value = data.subjects
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.detail || 'Не удалось загрузить данные ученика')
+    }
+  } catch (e) {
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка:', e)
+      alert('Ошибка подключения к серверу')
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// ✅ Используем studentId из URL, а не из student.value
+const openSubmissionModal = async (taskId, taskStudentId, grade) => {
+  try {
     const url = new URL(`${API_BASE_URL}/tasks/submission/detail`)
     url.searchParams.set('task_id', taskId)
-    url.searchParams.set('student_id', studentId)
-    url.searchParams.set('grade', grade)
+    url.searchParams.set('student_id', studentId) // ← всегда из URL
+    url.searchParams.set('grade', studentGrade.value)
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    const res = await apiFetch(url.toString())
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -43,67 +84,51 @@ const openModal = async (taskId, studentId) => {
 
     selectedSubmission.value = await res.json()
     isModalOpen.value = true
-
   } catch (e) {
-    console.error('Ошибка открытия модалки:', e)
-    alert(e.message || 'Не удалось загрузить задание')
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка:', e)
+      alert(e.message || 'Не удалось загрузить задание')
+    }
   }
 }
 
-const loadGradesData = async () => {
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-  isLoading.value = true
-  try {
-    const url = new URL(`${API_BASE_URL}/tasks/grades/${encodeURIComponent(grade)}`)
-    if (selectedSubject.value && selectedSubject.value !== 'Все предметы') {
-      url.searchParams.set('subject', selectedSubject.value)
-    }
-
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      students.value = data.students || []
-      tasks.value = data.tasks || []
-      cells.value = data.cells || {}
-    } else {
-      alert('Ошибка загрузки журнала')
-    }
-  } catch (e) {
-    console.error('Ошибка:', e)
-    alert('Не удалось подключиться к серверу')
-  } finally {
-    isLoading.value = false
+const allTasks = computed(() => {
+  const tasks = []
+  for (const subject in subjects.value) {
+    tasks.push(...subjects.value[subject])
   }
-}
-
-const uniqueSubjects = computed(() => {
-  const subjects = new Set(tasks.value.map(t => t.subject).filter(Boolean))
-  return ['Все предметы', ...Array.from(subjects).sort()]
+  return tasks.sort((a, b) => new Date(b.due_date) - new Date(a.due_date))
 })
 
-const getCell = (taskId, studentId) => {
-  return cells.value[`${taskId}-${studentId}`] || { status: 'not_assigned', grade: null }
+const getCellClass = (task) => {
+  if (task.status === 'accepted') {
+    switch (task.grade) {
+      case 5: return 'bg-green-500 text-white'
+      case 4: return 'bg-orange-500 text-white'
+      case 3: return 'bg-yellow-400 text-black'
+      case 2: return 'bg-red-500 text-white'
+    }
+  }
+  if (task.status === 'submitted') {
+    return 'bg-gray-400 text-white'
+  }
+  if (task.status === 'assigned') {
+    return 'bg-red-500 text-white'
+  }
+  return 'bg-transparent'
 }
 
 const getStatusText = (status) => {
   switch (status) {
     case 'accepted': return 'Оценено'
-    case 'submitted': return 'Прислано, не оценено'
+    case 'submitted': return 'Прислано'
     case 'assigned': return 'Задано, не прислано'
-    case 'not_assigned': return 'Не задано'
     default: return '—'
   }
 }
 
-watch(() => route.params.grade, () => loadGradesData())
-watch(selectedSubject, () => loadGradesData())
-
 onMounted(() => {
-  if (grade) loadGradesData()
+  loadStudentData()
 })
 </script>
 
@@ -117,44 +142,48 @@ onMounted(() => {
             <h2 class="text-xl font-bold text-gray-800">Задание: {{ selectedSubmission?.task_title }}</h2>
             <button @click="isModalOpen = false" class="btn btn-ghost btn-sm">×</button>
           </div>
-
           <div class="mb-4 p-3 bg-blue-50 rounded-lg">
             <div class="font-semibold text-gray-800">{{ selectedSubmission?.student_name }} • {{ selectedSubmission?.grade }}</div>
             <div v-if="selectedSubmission?.teacher_grade" class="text-green-600 font-medium mt-1">
               Оценка: {{ selectedSubmission.teacher_grade }}
             </div>
           </div>
-
           <div class="space-y-3">
+            <div>
+              <div class="text-sm font-medium text-gray-700 mb-1">Предмет</div>
+              <div class="p-2 bg-gray-100 rounded font-medium">{{ selectedSubmission?.subject }}</div>
+            </div>
             <div>
               <div class="text-sm font-medium text-gray-700 mb-1">Описание задания</div>
               <div class="p-3 bg-gray-100 rounded border whitespace-pre-wrap break-words text-gray-800">
                 {{ selectedSubmission?.description }}
               </div>
             </div>
-
             <div v-if="selectedSubmission?.student_comment">
               <div class="text-sm font-medium text-gray-700 mb-1">💬 Комментарий ученика</div>
               <div class="p-3 bg-gray-100 rounded border whitespace-pre-wrap break-words text-gray-800">
                 {{ selectedSubmission.student_comment }}
               </div>
             </div>
-
             <div v-if="selectedSubmission?.teacher_comment">
               <div class="text-sm font-medium text-gray-700 mb-1 text-green-700">✅ Комментарий учителя</div>
               <div class="p-3 bg-green-50 rounded border border-green-200 whitespace-pre-wrap break-words text-gray-800">
                 {{ selectedSubmission.teacher_comment }}
               </div>
             </div>
-
             <div v-if="selectedSubmission?.ai_analysis">
               <div class="text-sm font-medium text-gray-700 mb-1 text-blue-700">🤖 Анализ ИИ</div>
               <div class="p-3 bg-blue-50 rounded border border-blue-200 whitespace-pre-wrap break-words text-gray-800">
                 {{ selectedSubmission.ai_analysis }}
               </div>
             </div>
+            <div v-if="selectedSubmission?.due_date">
+              <div class="text-sm font-medium text-gray-700 mb-1">📅 Дедлайн</div>
+              <div class="p-2 bg-gray-100 rounded">
+                {{ new Date(selectedSubmission.due_date).toLocaleDateString('ru-RU') }}
+              </div>
+            </div>
           </div>
-
           <div class="mt-5 text-right">
             <button @click="isModalOpen = false" class="btn btn-primary">Закрыть</button>
           </div>
@@ -162,102 +191,104 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Основной контент -->
-    <div class="max-w-7xl mx-auto">
-      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
-        <h1 class="text-2xl font-bold text-gray-800">Журнал оценок: <span class="text-blue-600">{{ grade }}</span></h1>
+    <!-- Заголовок -->
+    <div class="max-w-6xl mx-auto mb-6">
+      <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-gray-800">
+          Ученик: <span class="text-blue-600">{{ student?.full_name }}</span>
+        </h1>
         <button @click="router.back()" class="btn btn-ghost btn-sm">← Назад</button>
       </div>
+      <p class="text-gray-600">Класс: {{ student?.grade }}</p>
+    </div>
 
-      <!-- Фильтр -->
-      <div class="mb-5 flex flex-wrap items-center gap-2">
-        <span class="text-sm font-medium text-gray-700">Фильтр по предмету:</span>
-        <select v-model="selectedSubject" class="select select-bordered text-sm">
-          <option v-for="subj in uniqueSubjects" :key="subj" :value="subj">
-            {{ subj }}
-          </option>
-        </select>
+    <!-- Загрузка -->
+    <div v-if="isLoading" class="text-center py-12">
+      <span class="loading loading-spinner loading-lg"></span>
+    </div>
+
+    <!-- Таблица -->
+    <div v-else-if="Object.keys(subjects).length > 0" class="max-w-6xl mx-auto overflow-x-auto">
+      <div class="min-w-full" style="min-width: 800px;">
+        <table class="table w-full border-separate" style="border-spacing: 0;">
+          <thead class="bg-gray-100">
+          <tr>
+            <th class="sticky left-0 z-10 bg-gray-100 border-r border-gray-300 py-3 px-3 text-left font-semibold min-w-[180px]">
+              Предмет
+            </th>
+            <th
+                v-for="(task, index) in allTasks"
+                :key="task.task_id"
+                class="text-center py-2 px-2 min-w-[80px] border-l border-gray-300"
+            >
+              {{ index + 1 }}
+            </th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-for="(taskList, subject) in subjects" :key="subject" class="hover:bg-gray-50">
+            <td class="sticky left-0 z-10 bg-white border-r border-gray-300 font-medium py-2 px-3 min-w-[180px]">
+              {{ subject }}
+            </td>
+            <td
+                v-for="(task, taskIndex) in taskList"
+                :key="task.task_id"
+                class="border-l border-gray-300 p-0 text-center"
+            >
+              <div
+                  @click="openSubmissionModal(task.task_id, student.id, student.grade)"
+                  class="w-8 h-8 flex items-center justify-center cursor-pointer rounded text-sm font-bold transition-all hover:shadow-md hover:scale-105"
+                  :class="getCellClass(task)"
+                  :title="getStatusText(task.status)"
+              >
+                {{ task.status === 'accepted' ? task.grade : '' }}
+              </div>
+            </td>
+            <td
+                v-for="i in allTasks.length - taskList.length"
+                :key="'empty-' + i"
+                class="border-l border-gray-300 p-0 text-center"
+            >
+              <div class="w-8 h-8"></div>
+            </td>
+          </tr>
+          </tbody>
+        </table>
       </div>
+    </div>
 
-      <!-- Таблица -->
-      <div v-if="!isLoading && (tasks.length > 0 && students.length > 0)" class="rounded-lg border border-gray-300 overflow-hidden shadow-sm">
-        <div class="overflow-x-auto">
-          <table class="w-full">
-            <thead class="bg-gray-100 text-gray-700">
-            <tr>
-              <th class="sticky left-0 z-10 bg-gray-100 border-r border-gray-300 py-3 px-3 text-left font-semibold">
-                Ученик
-              </th>
-              <th
-                  v-for="task in tasks"
-                  :key="task.id"
-                  class="text-center py-2 px-2 min-w-[100px] border-l border-gray-300"
-              >
-                <div class="font-semibold text-xs text-gray-800 truncate">{{ task.title }}</div>
-                <div class="text-[10px] text-gray-500 mt-1 truncate">{{ task.subject }}</div>
-                <div class="text-[10px] text-gray-500">
-                  {{ new Date(task.due_date).toLocaleDateString('ru-RU') }}
-                </div>
-              </th>
-            </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200">
-            <tr v-for="student in students" :key="student.id" class="hover:bg-gray-50">
-              <!-- ✅ КЛИК ПО ИМЕНИ → ПРОФИЛЬ УЧЕНИКА -->
-              <td
-                  class="sticky left-0 z-10 bg-white border-r border-gray-300 font-medium py-2 px-3 cursor-pointer"
-                  @click="router.push(`/teacher/class/${grade}/student/${student.id}`)"
-              >
-                {{ student.full_name }}
-              </td>
-              <td
-                  v-for="task in tasks"
-                  :key="`${student.id}-${task.id}`"
-                  class="border-l border-gray-300 p-0 text-center"
-              >
-                <div
-                    v-if="getCell(task.id, student.id).status !== 'not_assigned'"
-                    @click="openModal(task.id, student.id)"
-                    class="w-8 h-8 flex items-center justify-center cursor-pointer rounded text-white text-sm font-bold transition-all hover:shadow-md hover:scale-105"
-                    :class="{
-                      'bg-gray-400': getCell(task.id, student.id).status === 'submitted',
-                      'bg-green-500': getCell(task.id, student.id).grade === 5,
-                      'bg-orange-500': getCell(task.id, student.id).grade === 4,
-                      'bg-yellow-400': getCell(task.id, student.id).grade === 3,
-                      'bg-red-500': getCell(task.id, student.id).grade === 2 || getCell(task.id, student.id).status === 'assigned'
-                    }"
-                    :title="getStatusText(getCell(task.id, student.id).status)"
-                >
-                  {{ getCell(task.id, student.id).grade || '' }}
-                </div>
-                <div v-else class="w-8 h-8 flex items-center justify-center">
-                  <span class="text-red-500 text-xs">—</span>
-                </div>
-              </td>
-            </tr>
-            </tbody>
-          </table>
+    <div v-else class="max-w-6xl mx-auto text-center py-8 text-gray-500">
+      Нет заданий
+    </div>
+
+    <!-- Легенда -->
+    <div class="max-w-6xl mx-auto mt-6 p-4 bg-gray-100 rounded-lg">
+      <h3 class="font-bold mb-2">Легенда:</h3>
+      <div class="grid grid-cols-2 gap-2">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-green-500 rounded text-white text-center text-xs">5</div>
+          <span>Оценка 5</span>
         </div>
-      </div>
-
-      <!-- Состояния -->
-      <div v-if="isLoading" class="text-center py-12">
-        <span class="loading loading-spinner loading-lg"></span>
-      </div>
-
-      <div v-else-if="tasks.length === 0 || students.length === 0" class="text-center py-12 text-gray-500">
-        Нет данных для отображения
-      </div>
-
-      <!-- Легенда -->
-      <div class="mt-6 text-sm text-gray-600">
-        <strong>Легенда:</strong>
-        <span class="ml-4">🟢 5</span>
-        <span class="ml-4">🟠 4</span>
-        <span class="ml-4">🟡 3</span>
-        <span class="ml-4">🔴 2 или задано, не прислано</span>
-        <span class="ml-4">⚪ прислано</span>
-        <span class="ml-4">— не задано</span>
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-orange-500 rounded text-white text-center text-xs">4</div>
+          <span>Оценка 4</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-yellow-400 rounded text-black text-center text-xs">3</div>
+          <span>Оценка 3</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-red-500 rounded text-white text-center text-xs">2</div>
+          <span>Оценка 2</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-gray-400 rounded text-white text-center text-xs">—</div>
+          <span>Прислано, не оценено</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 bg-red-500 rounded text-white text-center">•</div>
+          <span>Задано, не прислано</span>
+        </div>
       </div>
     </div>
   </div>

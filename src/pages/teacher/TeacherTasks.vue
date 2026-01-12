@@ -1,3 +1,4 @@
+<!-- src/pages/teacher/TeacherTasks.vue -->
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -21,11 +22,15 @@ const newTask = ref({
   subject: '',
   reason: 'homework',
   due_date: null,
-  enable_ai_analysis: false // ← новое поле
+  enable_ai_analysis: false
 })
 const selectedStudents = ref(new Set())
 const students = ref([])
-const subjects = ref(['География', 'Химия','Геометрия', 'Алгебра', 'Дискретная математика', 'Биология', 'Математика', 'Русский язык', 'Физика', 'Химия', 'История', 'Литература',"Информатика","Электроника","рвпо","Базы данных"])
+const subjects = ref([
+  'География', 'Химия', 'Геометрия', 'Алгебра', 'Дискретная математика',
+  'Биология', 'Математика', 'Русский язык', 'Физика', 'История',
+  'Литература', 'Информатика', 'Электроника', 'рвпо', 'Базы данных'
+])
 const newFiles = ref([])
 const taskFiles = ref([])
 const error = ref('')
@@ -52,7 +57,25 @@ const aiAnalysis = ref('')
 const isAnalyzing = ref(false)
 const autoAnalyzed = ref(false)
 
-const getAccessToken = () => localStorage.getItem('access_token')
+// ✅ Универсальный fetch с обработкой 401
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('access_token')
+  const headers = {
+    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  }
+
+  const response = await fetch(url, { ...options, headers })
+
+  if (response.status === 401) {
+    // Очистка данных при неавторизованном доступе
+    localStorage.clear()
+    router.push('/login')
+    throw new Error('Unauthorized')
+  }
+
+  return response
+}
 
 const resetForm = () => {
   newTask.value = {
@@ -103,12 +126,8 @@ const getGradeBgClass = (grade) => {
 
 const loadStudents = async (grade) => {
   if (!grade) return
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
   try {
-    const res = await fetch(`${API_BASE_URL}/students/${encodeURIComponent(grade)}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    const res = await apiFetch(`${API_BASE_URL}/students/${encodeURIComponent(grade)}`)
     students.value = res.ok ? await res.json() : []
   } catch {
     students.value = []
@@ -117,8 +136,6 @@ const loadStudents = async (grade) => {
 
 const loadTasks = async (grade, page = 1) => {
   if (!grade) return
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
   loadingTasks.value = true
   try {
     const url = new URL(`${API_BASE_URL}/tasks/by-grade/${encodeURIComponent(grade)}`)
@@ -126,7 +143,7 @@ const loadTasks = async (grade, page = 1) => {
     url.searchParams.set('page', page)
     url.searchParams.set('size', pagination.value.size)
 
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const res = await apiFetch(url.toString())
     if (res.ok) {
       const data = await res.json()
       tasks.value = data.items
@@ -145,9 +162,6 @@ const loadTasks = async (grade, page = 1) => {
 }
 
 const loadSubmissions = async () => {
-  const token = getAccessToken()
-  if (!token) return
-
   loadingSubmissions.value = true
   try {
     const url = new URL(`${API_BASE_URL}/tasks/submissions`)
@@ -155,10 +169,7 @@ const loadSubmissions = async () => {
       url.searchParams.set('grade', route.params.grade)
     }
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-
+    const res = await apiFetch(url.toString())
     if (res.ok) {
       submissions.value = await res.json()
     } else {
@@ -172,9 +183,6 @@ const loadSubmissions = async () => {
 }
 
 const loadAcceptedTasks = async (page = 1) => {
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   loadingAccepted.value = true
   try {
     const url = new URL(`${API_BASE_URL}/tasks/submissions/accepted`)
@@ -184,10 +192,7 @@ const loadAcceptedTasks = async (page = 1) => {
     url.searchParams.set('page', page)
     url.searchParams.set('size', acceptedPagination.value.size)
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-
+    const res = await apiFetch(url.toString())
     if (res.ok) {
       const data = await res.json()
       acceptedTasks.value = data.items || []
@@ -232,26 +237,22 @@ const editTask = async (task) => {
 
 const deleteTaskFile = async (filename) => {
   if (!newTask.value.id) return
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   if (!confirm('Удалить файл?')) return
 
   try {
-    const res = await fetch(
+    const res = await apiFetch(
         `${API_BASE_URL}/tasks/${newTask.value.id}/files/${encodeURIComponent(filename)}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        { method: 'DELETE' }
     )
     if (res.ok) {
       taskFiles.value = taskFiles.value.filter(f => f !== filename)
     } else {
       alert('Не удалось удалить файл')
     }
-  } catch {
-    alert('Ошибка сети')
+  } catch (e) {
+    if (e.message !== 'Unauthorized') {
+      alert('Ошибка сети')
+    }
   }
 }
 
@@ -260,13 +261,9 @@ const deleteTask = async (taskId) => {
     return
   }
 
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   try {
-    const res = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
+    const res = await apiFetch(`${API_BASE_URL}/tasks/${taskId}`, {
+      method: 'DELETE'
     })
 
     if (res.ok) {
@@ -279,7 +276,9 @@ const deleteTask = async (taskId) => {
       alert(err.detail || 'Не удалось удалить задание')
     }
   } catch (e) {
-    alert('Ошибка сети')
+    if (e.message !== 'Unauthorized') {
+      alert('Ошибка сети')
+    }
   }
 }
 
@@ -289,9 +288,6 @@ const saveTask = async () => {
   if (!newTask.value.description?.trim()) return error.value = 'Описание обязательно'
   if (!newTask.value.subject) return error.value = 'Выберите предмет'
   if (selectedStudents.value.size === 0) return error.value = 'Выберите учеников'
-
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
 
   isLoading.value = true
   error.value = ''
@@ -314,12 +310,9 @@ const saveTask = async () => {
 
     const method = newTask.value.id ? 'PUT' : 'POST'
 
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
 
@@ -332,16 +325,15 @@ const saveTask = async () => {
         formData.append('files', file)
       }
 
-      const uploadRes = await fetch(`${API_BASE_URL}/tasks/${task.id}/upload`, {
+      const uploadRes = await apiFetch(`${API_BASE_URL}/tasks/${task.id}/upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       })
 
       if (!uploadRes.ok) throw new Error('Ошибка загрузки файлов')
-      const updatedTask = await fetch(`${API_BASE_URL}/tasks/by-grade/${grade}?scope=mine&page=1&size=10`, {
-        headers: { Authorization: `Bearer ${token}` }
-      }).then(r => r.ok ? r.json() : { items: [] })
+      const updatedTask = await apiFetch(
+          `${API_BASE_URL}/tasks/by-grade/${grade}?scope=mine&page=1&size=10`
+      ).then(r => r.ok ? r.json() : { items: [] })
       const updated = updatedTask.items.find(t => t.id === task.id)
       taskFiles.value = updated?.files || []
     }
@@ -349,7 +341,9 @@ const saveTask = async () => {
     resetForm()
     await loadTasks(grade, pagination.value.page)
   } catch (err) {
-    error.value = err.message || 'Не удалось сохранить'
+    if (err.message !== 'Unauthorized') {
+      error.value = err.message || 'Не удалось сохранить'
+    }
   } finally {
     isLoading.value = false
   }
@@ -362,7 +356,6 @@ const goToPage = (page) => {
 }
 
 const openSubmission = (sub) => {
-  // Защита от отсутствующего student_id (логирование)
   if (!sub?.student_id) {
     console.warn('⚠️ Присланное задание без student_id:', sub)
   }
@@ -399,9 +392,6 @@ const openAcceptedTask = (task) => {
 const acceptSubmission = async () => {
   if (!selectedSubmission.value) return
 
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   isSaving.value = true
   try {
     const formData = new FormData()
@@ -410,11 +400,10 @@ const acceptSubmission = async () => {
       formData.append('comment', modalComment.value)
     }
 
-    const res = await fetch(`${API_BASE_URL}/tasks/submissions/${selectedSubmission.value.id}/accept`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    })
+    const res = await apiFetch(
+        `${API_BASE_URL}/tasks/submissions/${selectedSubmission.value.id}/accept`,
+        { method: 'POST', body: formData }
+    )
 
     if (res.ok) {
       isModalOpen.value = false
@@ -426,7 +415,9 @@ const acceptSubmission = async () => {
       alert(err.detail || 'Ошибка при принятии задания')
     }
   } catch (e) {
-    alert('Ошибка сети')
+    if (e.message !== 'Unauthorized') {
+      alert('Ошибка сети')
+    }
   } finally {
     isSaving.value = false
   }
@@ -439,19 +430,15 @@ const rejectSubmission = async (submissionId) => {
     return
   }
 
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   processing.value.add(submissionId)
   try {
     const formData = new FormData()
     formData.append('comment', comment)
 
-    const res = await fetch(`${API_BASE_URL}/tasks/submissions/${submissionId}/reject`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    })
+    const res = await apiFetch(
+        `${API_BASE_URL}/tasks/submissions/${submissionId}/reject`,
+        { method: 'POST', body: formData }
+    )
 
     if (res.ok) {
       isModalOpen.value = false
@@ -462,7 +449,9 @@ const rejectSubmission = async (submissionId) => {
       alert(err.detail || 'Ошибка при отправке на доработку')
     }
   } catch (e) {
-    alert('Ошибка сети')
+    if (e.message !== 'Unauthorized') {
+      alert('Ошибка сети')
+    }
   } finally {
     processing.value.delete(submissionId)
   }
@@ -471,13 +460,9 @@ const rejectSubmission = async (submissionId) => {
 const downloadStudentFile = async (filename) => {
   if (!selectedSubmission.value) return
 
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   try {
-    const response = await fetch(
-        `${API_BASE_URL}/tasks/submissions/${selectedSubmission.value.id}/files/${encodeURIComponent(filename)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+    const response = await apiFetch(
+        `${API_BASE_URL}/tasks/submissions/${selectedSubmission.value.id}/files/${encodeURIComponent(filename)}`
     )
 
     if (!response.ok) throw new Error('Файл не найден')
@@ -487,7 +472,9 @@ const downloadStudentFile = async (filename) => {
     window.open(url, '_blank')
     setTimeout(() => window.URL.revokeObjectURL(url), 60000)
   } catch (e) {
-    alert('Ошибка открытия файла')
+    if (e.message !== 'Unauthorized') {
+      alert('Ошибка открытия файла')
+    }
   }
 }
 
@@ -520,15 +507,9 @@ const analyzeWithAI = async () => {
   aiAnalysis.value = 'Анализирую...'
 
   try {
-    const token = getAccessToken()
-    if (!token) return
-
-    const res = await fetch(`${API_BASE_URL}/ai/analyze-submission`, {
+    const res = await apiFetch(`${API_BASE_URL}/ai/analyze-submission`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         task_id: selectedSubmission.value.task_id,
         submission_id: selectedSubmission.value.id

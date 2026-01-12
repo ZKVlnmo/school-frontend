@@ -1,3 +1,4 @@
+<!-- src/pages/teacher/TeacherAttendance.vue -->
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -9,6 +10,25 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const route = useRoute()
 const router = useRouter()
 const grade = route.params.grade
+
+// ✅ Универсальный fetch с обработкой 401
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('access_token')
+  const headers = {
+    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  }
+
+  const response = await fetch(url, { ...options, headers })
+
+  if (response.status === 401) {
+    localStorage.clear()
+    router.push('/login')
+    throw new Error('Unauthorized')
+  }
+
+  return response
+}
 
 const students = ref([])
 const attendanceRecords = ref([])
@@ -62,30 +82,25 @@ function generateSchoolDays(quarter) {
   return days.map(d => d.toISOString().split('T')[0])
 }
 
-const getAccessToken = () => localStorage.getItem('access_token')
-
 const loadStudents = async () => {
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
   try {
-    const res = await fetch(`${API_BASE_URL}/students/${grade}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    const res = await apiFetch(`${API_BASE_URL}/students/${grade}`)
     if (res.ok) students.value = await res.json()
   } catch (e) {
-    console.error('Ошибка загрузки учеников:', e)
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка загрузки учеников:', e)
+    }
   }
 }
 
 const loadAttendance = async () => {
-  const token = getAccessToken()
   try {
-    const res = await fetch(`${API_BASE_URL}/attendance/${grade}/quarter/${activeQuarter.value}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    const res = await apiFetch(`${API_BASE_URL}/attendance/${grade}/quarter/${activeQuarter.value}`)
     if (res.ok) attendanceRecords.value = await res.json()
   } catch (e) {
-    console.error('Ошибка загрузки посещаемости:', e)
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка загрузки посещаемости:', e)
+    }
   }
 }
 
@@ -125,14 +140,10 @@ const toggleStatus = async (studentId, date) => {
     grade: grade,
     status: nextStatus
   }
-  const token = getAccessToken()
   try {
-    const res = await fetch(`${API_BASE_URL}/attendance/${grade}/record`, {
+    const res = await apiFetch(`${API_BASE_URL}/attendance/${grade}/record`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     })
     if (res.ok) {
@@ -145,12 +156,13 @@ const toggleStatus = async (studentId, date) => {
       }
     }
   } catch (e) {
-    console.error('Ошибка сохранения:', e)
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка сохранения:', e)
+    }
   }
 }
 
 const markAllPresentOnDate = async (targetDate) => {
-  const token = getAccessToken()
   const updates = []
 
   for (const student of students.value) {
@@ -171,12 +183,9 @@ const markAllPresentOnDate = async (targetDate) => {
   try {
     await Promise.all(
         updates.map(payload =>
-            fetch(`${API_BASE_URL}/attendance/${grade}/record`, {
+            apiFetch(`${API_BASE_URL}/attendance/${grade}/record`, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
             })
         )
@@ -185,7 +194,9 @@ const markAllPresentOnDate = async (targetDate) => {
       attendanceRecords.value.push(update)
     }
   } catch (e) {
-    console.error('Ошибка массовой отметки:', e)
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка массовой отметки:', e)
+    }
   }
 }
 
@@ -281,7 +292,7 @@ const initAttendanceChart = () => {
       labels: dailyPresence.value.map(item => formatDate(item.date)),
       datasets: [{
         label: 'Присутствующие',
-        data: dailyPresence.value.map(item => item.present), // вот здесь исправляем
+        data: dailyPresence.value.map(item => item.present),
         backgroundColor: '#10b981',
         borderColor: '#059669',
         borderWidth: 1
@@ -364,7 +375,8 @@ onMounted(() => {
       <table class="min-w-full bg-white">
         <thead>
         <tr class="bg-gray-50 text-left">
-          <th class="py-3 px-4 font-medium text-gray-700">Ученик</th>
+          <!-- Закреплённый заголовок -->
+          <th class="py-3 px-4 font-medium text-gray-700 sticky left-0 bg-gray-50 z-10">Ученик</th>
           <th
               v-for="day in daysInQuarter"
               :key="day"
@@ -386,7 +398,10 @@ onMounted(() => {
         </thead>
         <tbody>
         <tr v-for="student in students" :key="student.id" class="border-t border-gray-100">
-          <td class="py-3 px-4 font-medium text-gray-800">{{ student.full_name }}</td>
+          <!-- Закреплённая ячейка с именем -->
+          <td class="py-3 px-4 font-medium text-gray-800 sticky left-0 bg-white z-10">
+            {{ student.full_name }}
+          </td>
           <td
               v-for="day in daysInQuarter"
               :key="`${student.id}-${day}`"
@@ -492,3 +507,12 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Обеспечиваем корректное наложение sticky-ячеек */
+th.sticky,
+td.sticky {
+  position: sticky;
+  left: 0;
+}
+</style>

@@ -8,6 +8,25 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const route = useRoute()
 const router = useRouter()
 
+// ✅ Универсальный fetch с обработкой 401
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('access_token')
+  const headers = {
+    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  }
+
+  const response = await fetch(url, { ...options, headers })
+
+  if (response.status === 401) {
+    localStorage.clear()
+    router.push('/login')
+    throw new Error('Unauthorized')
+  }
+
+  return response
+}
+
 // ✅ studentId берём из URL — он всегда известен
 const studentId = route.params.studentId
 const studentGrade = ref('') // будем брать из данных
@@ -23,17 +42,11 @@ const isLoading = ref(false)
 const isModalOpen = ref(false)
 const selectedSubmission = ref(null)
 
-const getAccessToken = () => localStorage.getItem('access_token')
-
 const loadStudentData = async () => {
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   isLoading.value = true
   try {
-    const res = await fetch(
-        `${API_BASE_URL}/tasks/students/${encodeURIComponent(studentId)}/grades`,
-        { headers: { Authorization: `Bearer ${token}` } }
+    const res = await apiFetch(
+        `${API_BASE_URL}/tasks/students/${encodeURIComponent(studentId)}/grades`
     )
     if (res.ok) {
       const data = await res.json()
@@ -45,8 +58,10 @@ const loadStudentData = async () => {
       alert(err.detail || 'Не удалось загрузить данные ученика')
     }
   } catch (e) {
-    console.error('Ошибка:', e)
-    alert('Ошибка подключения к серверу')
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка:', e)
+      alert('Ошибка подключения к серверу')
+    }
   } finally {
     isLoading.value = false
   }
@@ -54,18 +69,13 @@ const loadStudentData = async () => {
 
 // ✅ Используем studentId из URL, а не из student.value
 const openSubmissionModal = async (taskId, taskStudentId, grade) => {
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   try {
     const url = new URL(`${API_BASE_URL}/tasks/submission/detail`)
     url.searchParams.set('task_id', taskId)
     url.searchParams.set('student_id', studentId) // ← всегда из URL
     url.searchParams.set('grade', studentGrade.value)
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    const res = await apiFetch(url.toString())
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -75,8 +85,10 @@ const openSubmissionModal = async (taskId, taskStudentId, grade) => {
     selectedSubmission.value = await res.json()
     isModalOpen.value = true
   } catch (e) {
-    console.error('Ошибка:', e)
-    alert(e.message || 'Не удалось загрузить задание')
+    if (e.message !== 'Unauthorized') {
+      console.error('Ошибка:', e)
+      alert(e.message || 'Не удалось загрузить задание')
+    }
   }
 }
 

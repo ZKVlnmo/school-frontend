@@ -38,6 +38,17 @@
         >
           {{ loading ? 'Вход...' : 'Войти' }}
         </button>
+
+        <!-- КНОПКА РЕГИСТРАЦИИ -->
+        <div class="text-center text-sm">
+          <p class="text-gray-600">Нет аккаунта?</p>
+          <router-link
+              to="/register"
+              class="text-blue-600 hover:text-blue-800 font-medium mt-1 inline-block"
+          >
+            Зарегистрироваться
+          </router-link>
+        </div>
       </form>
     </div>
   </div>

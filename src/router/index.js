@@ -4,10 +4,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 // Страницы общего назначения
 import Register from '@/pages/Register.vue'
 import Login from '@/pages/LoginView.vue'
-import AccountNotVerified from '@/pages/auth/AccountNotVerified.vue' // ← ДОБАВЛЕНО
+import AccountNotVerified from '@/pages/auth/AccountNotVerified.vue'
 
 // Страницы администратора
 import AdminTeachers from '@/pages/admin/AdminTeachers.vue'
+import GenerateStudents from '@/pages/admin/GenerateStudents.vue' // ← ДОБАВЛЕНО
 
 // Страницы учителя
 import TeacherSelectGrade from '@/pages/teacher/SelectGrade.vue'
@@ -17,17 +18,22 @@ import TeacherGradesTable from '@/pages/teacher/GradesTable.vue'
 import StudentProfile from '@/pages/teacher/StudentProfile.vue'
 
 // Страницы ученика
-import StudentTasks from '@/pages/student/StudentTasks.vue'
+import StudentTasks from '@//pages/student/StudentTasks.vue'
 
 const routes = [
   { path: '/register', component: Register },
   { path: '/login', component: Login },
-  { path: '/account-not-verified', component: AccountNotVerified }, // ← ДОБАВЛЕНО
+  { path: '/account-not-verified', component: AccountNotVerified },
 
   // Администратор
   {
     path: '/admin/teachers',
     component: AdminTeachers,
+    meta: { requiresAuth: true, requiresRole: 'admin' }
+  },
+  {
+    path: '/admin/generate-students',
+    component: GenerateStudents,
     meta: { requiresAuth: true, requiresRole: 'admin' }
   },
 
@@ -167,4 +173,5 @@ router.beforeEach((to, from, next) => {
     next()
   }
 })
+
 export default router

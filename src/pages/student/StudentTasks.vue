@@ -9,6 +9,26 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 const router = useRouter()
 const getAccessToken = () => localStorage.getItem('access_token')
 
+// ✅ Универсальный fetch с обработкой 401
+const apiFetch = async (url, options = {}) => {
+  const token = getAccessToken()
+  const headers = {
+    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  }
+
+  const response = await fetch(url, { ...options, headers })
+
+  // 🔒 Обработка 401: выход и редирект
+  if (response.status === 401) {
+    localStorage.clear()
+    router.push('/login')
+    throw new Error('Unauthorized')
+  }
+
+  return response
+}
+
 // Редирект для учителей и админов
 onMounted(() => {
   const userRole = localStorage.getItem('user_role')
@@ -18,7 +38,6 @@ onMounted(() => {
   // Если это НЕ ученик — перенаправляем
   if (userRole !== 'student') {
     if (userRole === 'teacher' && studentId && studentGrade) {
-      // Учитель: показываем его "журнал" как профиль ученика
       router.push(`/teacher/class/${encodeURIComponent(studentGrade)}/student/${studentId}`)
     } else if (userRole === 'admin') {
       router.push('/admin/teachers')
@@ -76,17 +95,11 @@ const getTimeLeft = (dueDate) => {
 }
 
 const loadAllTasks = async () => {
-  const token = getAccessToken()
-  if (!token) return router.push('/login')
-
   loading.value = true
   loadingChecked.value = true
 
   try {
-    // ИЗМЕНЁН URL: добавлено /new
-    const res = await fetch(`${API_BASE_URL}/students/tasks/new?page=1&size=100`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    const res = await apiFetch(`${API_BASE_URL}/students/tasks/new?page=1&size=100`)
 
     if (res.ok) {
       const data = await res.json()
@@ -204,10 +217,8 @@ const submitFromModal = async () => {
   submitting.value.add(taskId)
 
   try {
-    const token = getAccessToken()
-    const res = await fetch(`${API_BASE_URL}/students/tasks/${taskId}/submit`, {
+    const res = await apiFetch(`${API_BASE_URL}/students/tasks/${taskId}/submit`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
       body: formData
     })
 
@@ -219,7 +230,10 @@ const submitFromModal = async () => {
       alert(error.detail || 'Ошибка при отправке')
     }
   } catch (e) {
-    alert('Не удалось отправить задание')
+    // Ошибки 401 уже обрабатываются в apiFetch
+    if (e.message !== 'Unauthorized') {
+      alert('Не удалось отправить задание')
+    }
   } finally {
     submitting.value.delete(taskId)
   }
@@ -240,11 +254,10 @@ const openCheckedModal = (task) => {
 
 const downloadStudentFile = async (filename) => {
   if (!selectedCheckedTask.value) return
-  const token = getAccessToken()
+
   try {
-    const response = await fetch(
-        `${API_BASE_URL}/tasks/submissions/${selectedCheckedTask.value.id}/files/${encodeURIComponent(filename)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+    const response = await apiFetch(
+        `${API_BASE_URL}/tasks/submissions/${selectedCheckedTask.value.id}/files/${encodeURIComponent(filename)}`
     )
     if (!response.ok) throw new Error('Файл не найден')
     const blob = await response.blob()
@@ -257,7 +270,9 @@ const downloadStudentFile = async (filename) => {
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
   } catch (e) {
-    alert('Ошибка загрузки файла')
+    if (e.message !== 'Unauthorized') {
+      alert('Ошибка загрузки файла')
+    }
   }
 }
 </script>
@@ -413,6 +428,12 @@ const downloadStudentFile = async (filename) => {
     <div class="max-w-4xl mx-auto">
       <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
         <h1 class="text-3xl font-bold text-gray-800">Мои задания</h1>
+        <router-link
+            to="/student/grades"
+            class="btn btn-outline btn-sm"
+        >
+          Мой аккаунт
+        </router-link>
       </div>
 
       <div v-if="loading" class="text-center py-12">

@@ -29,6 +29,12 @@ const apiFetch = async (url, options = {}) => {
   return response
 }
 
+// ✅ Функция выхода из аккаунта
+const logout = () => {
+  localStorage.clear()
+  router.push('/login')
+}
+
 // Редирект для учителей и админов
 onMounted(() => {
   const userRole = localStorage.getItem('user_role')
@@ -402,9 +408,10 @@ const downloadStudentFile = async (filename) => {
                 </a>
               </div>
             </div>
+            <!-- ✅ ИСПРАВЛЕНО: читаемый фон и текст -->
             <div v-if="selectedCheckedTask.teacher_comment" class="max-h-32 overflow-y-auto">
               <label class="block text-sm font-medium text-gray-700">Комментарий учителя:</label>
-              <div class="p-3 bg-red-50 border border-red-200 text-red-800 rounded mt-1 whitespace-pre-wrap break-words">
+              <div class="p-3 bg-gray-100 border border-gray-300 text-gray-800 rounded mt-1 whitespace-pre-wrap break-words">
                 {{ selectedCheckedTask.teacher_comment }}
               </div>
             </div>
@@ -428,12 +435,20 @@ const downloadStudentFile = async (filename) => {
     <div class="max-w-4xl mx-auto">
       <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
         <h1 class="text-3xl font-bold text-gray-800">Мои задания</h1>
-        <router-link
-            to="/student/grades"
-            class="btn btn-outline btn-sm"
-        >
-          Мой аккаунт
-        </router-link>
+        <div class="flex gap-2">
+          <router-link
+              to="/student/grades"
+              class="btn btn-outline btn-sm"
+          >
+            Мой аккаунт
+          </router-link>
+          <button
+              @click="logout"
+              class="btn btn-ghost btn-sm text-error"
+          >
+            Выйти
+          </button>
+        </div>
       </div>
 
       <div v-if="loading" class="text-center py-12">

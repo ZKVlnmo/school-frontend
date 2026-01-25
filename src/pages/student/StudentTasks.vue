@@ -151,10 +151,14 @@ const getReasonLabel = (reason) => {
 
 const getReasonColor = (reason) => {
   switch (reason) {
-    case 'homework': return 'border-green-500 bg-green-50'
-    case 'illness': return 'border-blue-500 bg-blue-50'
-    case 'not_submitted': return 'border-red-500 bg-red-50'
-    default: return 'border-gray-300 bg-gray-50'
+    case 'homework':
+      return 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30'
+    case 'illness':
+      return 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/30'
+    case 'not_submitted':
+      return 'border-red-500 dark:border-red-400 bg-red-50 dark:bg-red-900/30'
+    default:
+      return 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'
   }
 }
 
@@ -170,13 +174,13 @@ const getReasonBadge = (reason) => {
 const getStatusInfo = (status) => {
   switch (status) {
     case 'submitted':
-      return { text: 'На проверке', class: 'bg-gray-200 text-gray-700' }
+      return { text: 'На проверке', class: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200' }
     case 'rejected':
       return { text: 'На доработку', class: 'bg-error text-white' }
     case 'assigned':
       return { text: 'Не отправлено', class: 'bg-warning text-white' }
     default:
-      return { text: '—', class: 'bg-gray-200 text-gray-700' }
+      return { text: '—', class: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200' }
   }
 }
 
@@ -284,37 +288,36 @@ const downloadStudentFile = async (filename) => {
 </script>
 
 <template>
-  <!-- Для учеников: показываем контент -->
-  <!-- Для учителей/админов: редирект уже произошёл в onMounted -->
-
-  <div class="min-h-screen bg-gray-50 p-4">
+  <!-- Общий контейнер с поддержкой тёмной темы -->
+  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 text-gray-800 dark:text-gray-200">
     <!-- Модальное окно: ответ -->
-    <div v-if="isResponseModalOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+    <div v-if="isResponseModalOpen" class="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto text-gray-800 dark:text-gray-200">
         <div class="p-6">
           <div class="flex justify-between items-start mb-4">
-            <h2 class="text-2xl font-bold text-gray-800">{{ selectedTaskForResponse?.title }}</h2>
+            <h2 class="text-2xl font-bold">{{ selectedTaskForResponse?.title }}</h2>
             <button @click="isResponseModalOpen = false" class="btn btn-ghost btn-sm">×</button>
           </div>
           <div class="space-y-5">
             <div>
-              <p class="text-sm text-gray-600 mb-1">
+              <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">
                 {{ selectedTaskForResponse?.subject }} • {{ selectedTaskForResponse?.teacher_name }}
               </p>
-              <div class="p-3 bg-gray-100 rounded border border-gray-200">
+              <!-- ✅ ИСПРАВЛЕНО: сохранение переносов и пробелов -->
+              <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 whitespace-pre-wrap break-words">
                 {{ selectedTaskForResponse?.description }}
               </div>
             </div>
 
             <div v-if="selectedTaskForResponse?.files?.length" class="pt-2">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Файлы от учителя:</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Файлы от учителя:</label>
               <div class="flex flex-wrap gap-2">
                 <a
                     v-for="(f, i) in selectedTaskForResponse.files"
                     :key="i"
                     :href="`${API_BASE_URL}/tasks/${selectedTaskForResponse.id}/files/${encodeURIComponent(f)}`"
                     target="_blank"
-                    class="text-xs px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                    class="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded hover:bg-gray-300 dark:hover:bg-gray-500"
                 >
                   📎 {{ f }}
                 </a>
@@ -322,22 +325,22 @@ const downloadStudentFile = async (filename) => {
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Ваш ответ:</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ваш ответ:</label>
               <textarea
                   v-model="responseComment"
                   placeholder="Напишите подробный ответ..."
-                  class="textarea textarea-bordered w-full"
+                  class="textarea textarea-bordered w-full bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
                   rows="5"
               ></textarea>
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Прикрепить файлы (необязательно):</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Прикрепить файлы (необязательно):</label>
               <input
                   type="file"
                   multiple
                   @change="onModalFileChange"
-                  class="file-input file-input-bordered w-full"
+                  class="file-input file-input-bordered w-full bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
               />
               <div v-if="responseFiles.length" class="mt-2 space-y-1">
                 <div v-for="(f, i) in responseFiles" :key="i" class="flex items-center gap-2 text-sm">
@@ -363,65 +366,65 @@ const downloadStudentFile = async (filename) => {
     </div>
 
     <!-- Модальное окно: проверенные -->
-    <div v-if="isCheckedModalOpen && selectedCheckedTask" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div v-if="isCheckedModalOpen && selectedCheckedTask" class="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto text-gray-800 dark:text-gray-200">
         <div class="p-6">
           <div class="flex justify-between items-start mb-4">
-            <h2 class="text-xl font-bold text-gray-800">{{ selectedCheckedTask.title }}</h2>
+            <h2 class="text-xl font-bold">{{ selectedCheckedTask.title }}</h2>
             <button @click="isCheckedModalOpen = false" class="btn btn-ghost btn-sm">×</button>
           </div>
           <div class="space-y-4">
             <div>
-              <p class="text-sm text-gray-600">{{ selectedCheckedTask.subject }} • {{ selectedCheckedTask.teacher_name }}</p>
-              <p class="mt-2">{{ selectedCheckedTask.description }}</p>
+              <p class="text-sm text-gray-600 dark:text-gray-400">{{ selectedCheckedTask.subject }} • {{ selectedCheckedTask.teacher_name }}</p>
+              <!-- ✅ ИСПРАВЛЕНО: сохранение форматирования -->
+              <p class="mt-2 whitespace-pre-wrap break-words">{{ selectedCheckedTask.description }}</p>
             </div>
             <div v-if="selectedCheckedTask.comment">
-              <label class="block text-sm font-medium text-gray-700">Ваш ответ:</label>
-              <div class="p-3 bg-gray-100 rounded mt-1 whitespace-pre-wrap break-words">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Ваш ответ:</label>
+              <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded mt-1 whitespace-pre-wrap break-words">
                 {{ selectedCheckedTask.comment }}
               </div>
             </div>
             <div v-if="selectedCheckedTask.student_files?.length">
-              <label class="block text-sm font-medium text-gray-700">Ваши файлы:</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Ваши файлы:</label>
               <div class="flex flex-wrap gap-2 mt-1">
                 <a
                     v-for="(f, i) in selectedCheckedTask.student_files"
                     :key="i"
                     @click.prevent="downloadStudentFile(f)"
-                    class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded cursor-pointer"
+                    class="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded cursor-pointer"
                 >
                   📎 {{ f }}
                 </a>
               </div>
             </div>
             <div v-if="selectedCheckedTask.files?.length">
-              <label class="block text-sm font-medium text-gray-700">Файлы от учителя:</label>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Файлы от учителя:</label>
               <div class="flex flex-wrap gap-2 mt-1">
                 <a
                     v-for="(f, i) in selectedCheckedTask.files"
                     :key="i"
                     :href="`${API_BASE_URL}/tasks/${selectedCheckedTask.id}/files/${encodeURIComponent(f)}`"
                     target="_blank"
-                    class="text-xs px-2 py-1 bg-gray-200 rounded"
+                    class="text-xs px-2 py-1 bg-gray-200 dark:bg-gray-600 rounded"
                 >
                   📎 {{ f }}
                 </a>
               </div>
             </div>
-            <!-- ✅ ИСПРАВЛЕНО: читаемый фон и текст -->
             <div v-if="selectedCheckedTask.teacher_comment" class="max-h-32 overflow-y-auto">
-              <label class="block text-sm font-medium text-gray-700">Комментарий учителя:</label>
-              <div class="p-3 bg-gray-100 border border-gray-300 text-gray-800 rounded mt-1 whitespace-pre-wrap break-words">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Комментарий учителя:</label>
+              <div class="p-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 rounded mt-1 whitespace-pre-wrap break-words">
                 {{ selectedCheckedTask.teacher_comment }}
               </div>
             </div>
             <div class="pt-2">
               <span :class="[
                 'px-3 py-1 rounded-full text-sm font-bold',
-                selectedCheckedTask.teacher_grade === 2 ? 'bg-red-100 text-red-800' :
-                selectedCheckedTask.teacher_grade === 3 ? 'bg-orange-100 text-orange-800' :
-                selectedCheckedTask.teacher_grade === 4 ? 'bg-blue-100 text-blue-800' :
-                'bg-green-100 text-green-800'
+                selectedCheckedTask.teacher_grade === 2 ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200' :
+                selectedCheckedTask.teacher_grade === 3 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200' :
+                selectedCheckedTask.teacher_grade === 4 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' :
+                'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200'
               ]">
                 Оценка: {{ selectedCheckedTask.teacher_grade }}
               </span>
@@ -434,7 +437,7 @@ const downloadStudentFile = async (filename) => {
     <!-- Основной контент (только для учеников) -->
     <div class="max-w-4xl mx-auto">
       <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
-        <h1 class="text-3xl font-bold text-gray-800">Мои задания</h1>
+        <h1 class="text-3xl font-bold">Мои задания</h1>
         <div class="flex gap-2">
           <router-link
               to="/student/grades"
@@ -457,7 +460,7 @@ const downloadStudentFile = async (filename) => {
 
       <div v-else>
         <div v-if="tasks.length > 0" class="mb-10">
-          <h2 class="text-xl font-semibold text-gray-800 mb-4">Текущие задания</h2>
+          <h2 class="text-xl font-semibold mb-4">Текущие задания</h2>
           <div class="space-y-4">
             <div
                 v-for="task in tasks"
@@ -470,31 +473,30 @@ const downloadStudentFile = async (filename) => {
                 @click="canRespond(task.status) ? openResponseModal(task) : null"
             >
               <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
-                <h3 class="font-bold text-lg text-gray-800">{{ task.title }}</h3>
+                <h3 class="font-bold text-lg">{{ task.title }}</h3>
                 <span :class="['text-xs px-2 py-1 rounded-full font-medium', getReasonBadge(task.reason)]">
                   {{ getReasonLabel(task.reason) }}
                 </span>
               </div>
 
-              <div class="text-gray-600 text-sm mb-2">
+              <div class="text-gray-600 dark:text-gray-400 text-sm mb-2">
                 {{ task.subject }} • {{ task.teacher_name }}
               </div>
 
-              <!-- ✅ ТАЙМЕР ДО ДЕДЛАЙНА -->
               <div v-if="task.due_date" class="text-sm mb-2">
                 <span class="font-medium">📅 Сдать до:</span>
-                <span :class="isOverdue(task.due_date) ? 'text-red-600 font-bold' : 'text-gray-700'">
+                <span :class="isOverdue(task.due_date) ? 'text-red-600 dark:text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'">
                   {{ formatDate(task.due_date) }}
                 </span>
-                <span v-if="isOverdue(task.due_date)" class="ml-1 text-red-600">⚠️</span>
-                <span v-else class="ml-2 text-gray-600">
+                <span v-if="isOverdue(task.due_date)" class="ml-1 text-red-600 dark:text-red-400">⚠️</span>
+                <span v-else class="ml-2 text-gray-600 dark:text-gray-400">
                   ({{ getTimeLeft(task.due_date).days }}д {{ getTimeLeft(task.due_date).hours }}ч)
                 </span>
               </div>
 
-              <p class="text-gray-800 mb-3 line-clamp-2">{{ task.description }}</p>
+              <!-- ✅ line-clamp-2 остаётся — это нормально для списка -->
+              <p class="text-gray-800 dark:text-gray-200 mb-3 line-clamp-2">{{ task.description }}</p>
 
-              <!-- СТАТУС -->
               <div class="flex items-center justify-between">
                 <span :class="[
                   'text-xs px-2 py-1 rounded font-medium',
@@ -512,25 +514,25 @@ const downloadStudentFile = async (filename) => {
         </div>
 
         <div v-if="checkedTasks.length > 0">
-          <h2 class="text-xl font-semibold text-gray-800 mb-4">Проверенные задания</h2>
+          <h2 class="text-xl font-semibold mb-4">Проверенные задания</h2>
           <div class="space-y-3">
             <div
                 v-for="task in getPaginatedChecked"
                 :key="task.id"
                 @click="openCheckedModal(task)"
-                class="p-4 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition"
+                class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition"
             >
               <div class="flex justify-between items-start">
                 <div>
-                  <div class="font-bold text-gray-800">{{ task.title }}</div>
-                  <div class="text-sm text-gray-600">{{ task.subject }}</div>
+                  <div class="font-bold">{{ task.title }}</div>
+                  <div class="text-sm text-gray-600 dark:text-gray-400">{{ task.subject }}</div>
                 </div>
                 <span :class="[
                   'px-3 py-1 rounded-full text-sm font-bold',
-                  task.teacher_grade === 2 ? 'bg-red-100 text-red-800' :
-                  task.teacher_grade === 3 ? 'bg-orange-100 text-orange-800' :
-                  task.teacher_grade === 4 ? 'bg-blue-100 text-blue-800' :
-                  'bg-green-100 text-green-800'
+                  task.teacher_grade === 2 ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200' :
+                  task.teacher_grade === 3 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200' :
+                  task.teacher_grade === 4 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' :
+                  'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200'
                 ]">
                   {{ task.teacher_grade }}
                 </span>
@@ -551,7 +553,7 @@ const downloadStudentFile = async (filename) => {
           </div>
         </div>
 
-        <div v-if="tasks.length === 0 && checkedTasks.length === 0" class="text-center py-12 text-gray-500">
+        <div v-if="tasks.length === 0 && checkedTasks.length === 0" class="text-center py-12 text-gray-500 dark:text-gray-400">
           У вас нет заданий
         </div>
       </div>

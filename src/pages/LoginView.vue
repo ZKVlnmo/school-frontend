@@ -1,35 +1,35 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-    <div class="w-full max-w-md bg-white rounded-xl shadow-md p-6 space-y-6">
+  <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+    <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 space-y-6">
       <div class="text-center">
-        <h1 class="text-2xl font-bold text-gray-800">Вход в систему</h1>
-        <p class="text-gray-600 mt-2">Введите email и пароль</p>
+        <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100">Вход в систему</h1>
+        <p class="text-gray-600 dark:text-gray-400 mt-2">Введите email и пароль</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
           <input
               v-model="form.email"
               type="email"
               required
-              class="input input-bordered w-full"
+              class="input input-bordered w-full bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
               placeholder="user@example.com"
           />
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Пароль</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Пароль</label>
           <input
               v-model="form.password"
               type="password"
               required
-              class="input input-bordered w-full"
+              class="input input-bordered w-full bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
               placeholder="••••••••"
           />
         </div>
 
-        <div v-if="error" class="text-red-600 text-sm">{{ error }}</div>
+        <div v-if="error" class="text-red-600 dark:text-red-400 text-sm">{{ error }}</div>
 
         <button
             type="submit"
@@ -41,10 +41,10 @@
 
         <!-- КНОПКА РЕГИСТРАЦИИ -->
         <div class="text-center text-sm">
-          <p class="text-gray-600">Нет аккаунта?</p>
+          <p class="text-gray-600 dark:text-gray-400">Нет аккаунта?</p>
           <router-link
               to="/register"
-              class="text-blue-600 hover:text-blue-800 font-medium mt-1 inline-block"
+              class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium mt-1 inline-block"
           >
             Зарегистрироваться
           </router-link>

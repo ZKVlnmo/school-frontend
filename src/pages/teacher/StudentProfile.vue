@@ -1,11 +1,10 @@
-<!-- src/pages/teacher/StudentProfile.vue -->
+<!-- src/pages/student/StudentProfile.vue -->
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
 
-const route = useRoute()
 const router = useRouter()
 
 // ✅ Универсальный fetch с обработкой 401
@@ -27,35 +26,24 @@ const apiFetch = async (url, options = {}) => {
   return response
 }
 
-// ✅ studentId берём из URL — он всегда известен
-const studentId = route.params.studentId
-const studentGrade = ref('') // будем брать из данных
-
-if (!studentId || isNaN(Number(studentId))) {
-  alert('Некорректный ID ученика')
-  router.back()
-}
-
 const student = ref(null)
 const subjects = ref({})
 const isLoading = ref(false)
 const isModalOpen = ref(false)
 const selectedSubmission = ref(null)
 
-const loadStudentData = async () => {
+// Загружаем ТОЛЬКО свои данные
+const loadMyGrades = async () => {
   isLoading.value = true
   try {
-    const res = await apiFetch(
-        `${API_BASE_URL}/tasks/students/${encodeURIComponent(studentId)}/grades`
-    )
+    const res = await apiFetch(`${API_BASE_URL}/tasks/my/grades`)
     if (res.ok) {
       const data = await res.json()
       student.value = data.student
-      studentGrade.value = data.student.grade
       subjects.value = data.subjects
     } else {
       const err = await res.json().catch(() => ({}))
-      alert(err.detail || 'Не удалось загрузить данные ученика')
+      alert(err.detail || 'Не удалось загрузить ваши задания')
     }
   } catch (e) {
     if (e.message !== 'Unauthorized') {
@@ -67,13 +55,13 @@ const loadStudentData = async () => {
   }
 }
 
-// ✅ Используем studentId из URL, а не из student.value
-const openSubmissionModal = async (taskId, taskStudentId, grade) => {
+// Открытие модального окна по task_id
+const openSubmissionModal = async (taskId) => {
   try {
     const url = new URL(`${API_BASE_URL}/tasks/submission/detail`)
     url.searchParams.set('task_id', taskId)
-    url.searchParams.set('student_id', studentId) // ← всегда из URL
-    url.searchParams.set('grade', studentGrade.value)
+    url.searchParams.set('student_id', student.value.id)
+    url.searchParams.set('grade', student.value.grade)
 
     const res = await apiFetch(url.toString())
 
@@ -128,58 +116,65 @@ const getStatusText = (status) => {
 }
 
 onMounted(() => {
-  loadStudentData()
+  // Проверка роли (на всякий случай)
+  const userRole = localStorage.getItem('user_role')
+  if (userRole !== 'student') {
+    router.push('/login')
+    return
+  }
+
+  loadMyGrades()
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 p-4">
+  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 text-gray-800 dark:text-gray-200">
     <!-- Модальное окно -->
-    <div v-if="isModalOpen" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div v-if="isModalOpen" class="fixed inset-0 bg-black bg-opacity-40 dark:bg-black dark:bg-opacity-60 flex items-center justify-center z-50 p-4">
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div class="p-5">
           <div class="flex justify-between items-start mb-4">
-            <h2 class="text-xl font-bold text-gray-800">Задание: {{ selectedSubmission?.task_title }}</h2>
+            <h2 class="text-xl font-bold">{{ selectedSubmission?.task_title }}</h2>
             <button @click="isModalOpen = false" class="btn btn-ghost btn-sm">×</button>
           </div>
-          <div class="mb-4 p-3 bg-blue-50 rounded-lg">
-            <div class="font-semibold text-gray-800">{{ selectedSubmission?.student_name }} • {{ selectedSubmission?.grade }}</div>
-            <div v-if="selectedSubmission?.teacher_grade" class="text-green-600 font-medium mt-1">
+          <div class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+            <div class="font-semibold">{{ selectedSubmission?.student_name }} • {{ selectedSubmission?.grade }}</div>
+            <div v-if="selectedSubmission?.teacher_grade" class="text-green-600 dark:text-green-400 font-medium mt-1">
               Оценка: {{ selectedSubmission.teacher_grade }}
             </div>
           </div>
           <div class="space-y-3">
             <div>
-              <div class="text-sm font-medium text-gray-700 mb-1">Предмет</div>
-              <div class="p-2 bg-gray-100 rounded font-medium">{{ selectedSubmission?.subject }}</div>
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Предмет</div>
+              <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded font-medium">{{ selectedSubmission?.subject }}</div>
             </div>
             <div>
-              <div class="text-sm font-medium text-gray-700 mb-1">Описание задания</div>
-              <div class="p-3 bg-gray-100 rounded border whitespace-pre-wrap break-words text-gray-800">
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Описание задания</div>
+              <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded border whitespace-pre-wrap break-words">
                 {{ selectedSubmission?.description }}
               </div>
             </div>
             <div v-if="selectedSubmission?.student_comment">
-              <div class="text-sm font-medium text-gray-700 mb-1">💬 Комментарий ученика</div>
-              <div class="p-3 bg-gray-100 rounded border whitespace-pre-wrap break-words text-gray-800">
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">💬 Ваш комментарий</div>
+              <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded border whitespace-pre-wrap break-words">
                 {{ selectedSubmission.student_comment }}
               </div>
             </div>
             <div v-if="selectedSubmission?.teacher_comment">
-              <div class="text-sm font-medium text-gray-700 mb-1 text-green-700">✅ Комментарий учителя</div>
-              <div class="p-3 bg-green-50 rounded border border-green-200 whitespace-pre-wrap break-words text-gray-800">
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-green-700 dark:text-green-400">✅ Комментарий учителя</div>
+              <div class="p-3 bg-green-50 dark:bg-green-900/30 rounded border border-green-200 dark:border-green-700 whitespace-pre-wrap break-words">
                 {{ selectedSubmission.teacher_comment }}
               </div>
             </div>
             <div v-if="selectedSubmission?.ai_analysis">
-              <div class="text-sm font-medium text-gray-700 mb-1 text-blue-700">🤖 Анализ ИИ</div>
-              <div class="p-3 bg-blue-50 rounded border border-blue-200 whitespace-pre-wrap break-words text-gray-800">
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-blue-700 dark:text-blue-400">🤖 Анализ ИИ</div>
+              <div class="p-3 bg-blue-50 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700 whitespace-pre-wrap break-words">
                 {{ selectedSubmission.ai_analysis }}
               </div>
             </div>
             <div v-if="selectedSubmission?.due_date">
-              <div class="text-sm font-medium text-gray-700 mb-1">📅 Дедлайн</div>
-              <div class="p-2 bg-gray-100 rounded">
+              <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">📅 Дедлайн</div>
+              <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded">
                 {{ new Date(selectedSubmission.due_date).toLocaleDateString('ru-RU') }}
               </div>
             </div>
@@ -194,12 +189,13 @@ onMounted(() => {
     <!-- Заголовок -->
     <div class="max-w-6xl mx-auto mb-6">
       <div class="flex justify-between items-center">
-        <h1 class="text-2xl font-bold text-gray-800">
-          Ученик: <span class="text-blue-600">{{ student?.full_name }}</span>
+        <h1 class="text-2xl font-bold">
+          Мой профиль
         </h1>
         <button @click="router.back()" class="btn btn-ghost btn-sm">← Назад</button>
       </div>
-      <p class="text-gray-600">Класс: {{ student?.grade }}</p>
+      <p class="text-gray-600 dark:text-gray-400">Ученик: <span class="font-medium">{{ student?.full_name }}</span></p>
+      <p class="text-gray-600 dark:text-gray-400">Класс: {{ student?.grade }}</p>
     </div>
 
     <!-- Загрузка -->
@@ -211,32 +207,32 @@ onMounted(() => {
     <div v-else-if="Object.keys(subjects).length > 0" class="max-w-6xl mx-auto overflow-x-auto">
       <div class="min-w-full" style="min-width: 800px;">
         <table class="table w-full border-separate" style="border-spacing: 0;">
-          <thead class="bg-gray-100">
+          <thead class="bg-gray-100 dark:bg-gray-800">
           <tr>
-            <th class="sticky left-0 z-10 bg-gray-100 border-r border-gray-300 py-3 px-3 text-left font-semibold min-w-[180px]">
+            <th class="sticky left-0 z-10 bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-600 py-3 px-3 text-left font-semibold min-w-[180px]">
               Предмет
             </th>
             <th
                 v-for="(task, index) in allTasks"
                 :key="task.task_id"
-                class="text-center py-2 px-2 min-w-[80px] border-l border-gray-300"
+                class="text-center py-2 px-2 min-w-[80px] border-l border-gray-300 dark:border-gray-600"
             >
               {{ index + 1 }}
             </th>
           </tr>
           </thead>
           <tbody>
-          <tr v-for="(taskList, subject) in subjects" :key="subject" class="hover:bg-gray-50">
-            <td class="sticky left-0 z-10 bg-white border-r border-gray-300 font-medium py-2 px-3 min-w-[180px]">
+          <tr v-for="(taskList, subject) in subjects" :key="subject" class="hover:bg-gray-50 dark:hover:bg-gray-800">
+            <td class="sticky left-0 z-10 bg-white dark:bg-gray-800 border-r border-gray-300 dark:border-gray-600 font-medium py-2 px-3 min-w-[180px]">
               {{ subject }}
             </td>
             <td
                 v-for="(task, taskIndex) in taskList"
                 :key="task.task_id"
-                class="border-l border-gray-300 p-0 text-center"
+                class="border-l border-gray-300 dark:border-gray-600 p-0 text-center"
             >
               <div
-                  @click="openSubmissionModal(task.task_id, student.id, student.grade)"
+                  @click="openSubmissionModal(task.task_id)"
                   class="w-8 h-8 flex items-center justify-center cursor-pointer rounded text-sm font-bold transition-all hover:shadow-md hover:scale-105"
                   :class="getCellClass(task)"
                   :title="getStatusText(task.status)"
@@ -247,7 +243,7 @@ onMounted(() => {
             <td
                 v-for="i in allTasks.length - taskList.length"
                 :key="'empty-' + i"
-                class="border-l border-gray-300 p-0 text-center"
+                class="border-l border-gray-300 dark:border-gray-600 p-0 text-center"
             >
               <div class="w-8 h-8"></div>
             </td>
@@ -257,12 +253,12 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-else class="max-w-6xl mx-auto text-center py-8 text-gray-500">
-      Нет заданий
+    <div v-else class="max-w-6xl mx-auto text-center py-8 text-gray-500 dark:text-gray-400">
+      Вам пока не назначено ни одного задания
     </div>
 
     <!-- Легенда -->
-    <div class="max-w-6xl mx-auto mt-6 p-4 bg-gray-100 rounded-lg">
+    <div class="max-w-6xl mx-auto mt-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
       <h3 class="font-bold mb-2">Легенда:</h3>
       <div class="grid grid-cols-2 gap-2">
         <div class="flex items-center gap-2">
@@ -274,7 +270,7 @@ onMounted(() => {
           <span>Оценка 4</span>
         </div>
         <div class="flex items-center gap-2">
-          <div class="w-6 h-6 bg-yellow-400 rounded text-black text-center text-xs">3</div>
+          <div class="w-6 h-6 bg-yellow-400 rounded text-black dark:text-black text-center text-xs">3</div>
           <span>Оценка 3</span>
         </div>
         <div class="flex items-center gap-2">
